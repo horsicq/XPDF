@@ -30,6 +30,8 @@ class XPDF: public XBinary
 
 public:
     XPDF(QIODevice *pDevice);
+
+    bool isValid();
 };
 
 #endif // XPDF_H

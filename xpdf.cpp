@@ -25,3 +25,9 @@ XPDF::XPDF(QIODevice *pDevice): XBinary(pDevice)
 
 }
 
+bool XPDF::isValid()
+{
+    // TODO
+    return false;
+}
+
