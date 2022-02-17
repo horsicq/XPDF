@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2022 hors<horsicq@gmail.com>
+/* Copyright (c) 2022 hors<horsicq@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,16 @@ XPDF::XPDF(QIODevice *pDevice): XBinary(pDevice)
 
 bool XPDF::isValid()
 {
-    // TODO
-    return false;
+    bool bResult=false;
+
+    if(getSize()>4)
+    {
+        if(read_uint32(0)==0x46445025) // %PDF
+        {
+            bResult=true;
+        }
+    }
+
+    return bResult;
 }
 
