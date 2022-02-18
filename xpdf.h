@@ -32,6 +32,8 @@ public:
     XPDF(QIODevice *pDevice);
 
     bool isValid();
+    virtual QString getVersion();
+    virtual FT getFileType();
 };
 
 #endif // XPDF_H

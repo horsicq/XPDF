@@ -40,3 +40,17 @@ bool XPDF::isValid()
     return bResult;
 }
 
+QString XPDF::getVersion()
+{
+    QString sResult;
+
+    sResult=read_ansiString(5,4);
+
+    return sResult;
+}
+
+XBinary::FT XPDF::getFileType()
+{
+    return FT_PDF;
+}
+
