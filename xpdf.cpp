@@ -54,3 +54,57 @@ XBinary::FT XPDF::getFileType()
     return FT_PDF;
 }
 
+qint64 XPDF::findStartxref()
+{
+    qint64 nResult=-1;
+    qint64 nSize=getSize();
+
+    qint64 nOffset=qMax((qint64)0,nSize-0x1000);  // TODO const
+
+    while(true)
+    {
+        qint64 nCurrent=find_ansiString(nOffset,-1,"startxref"); // mb TODO \r
+
+        if(nCurrent==-1)
+        {
+            break;
+        }
+
+        nOffset=nCurrent+10; // Get the last
+    }
+
+    if(nOffset!=-1)
+    {
+        QString sOffset=readPDFValue(nOffset);
+
+        nResult=sOffset.toULongLong();
+
+        if(nResult==0)
+        {
+            nResult=-1;
+        }
+    }
+
+    return nResult;
+}
+
+QString XPDF::readPDFValue(qint64 nOffset)
+{
+    QString sResult;
+
+    // TODO optimize
+    for(qint32 i=0;i<65535;i++)
+    {
+        QString sSymbol=read_ansiString(nOffset+i,1);
+
+        if((sSymbol=="")||(sSymbol=="\r"))
+        {
+            break;
+        }
+
+        sResult.append(sSymbol);
+    }
+
+    return sResult;
+}
+

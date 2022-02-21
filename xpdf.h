@@ -34,6 +34,9 @@ public:
     bool isValid();
     virtual QString getVersion();
     virtual FT getFileType();
+
+    qint64 findStartxref();
+    QString readPDFValue(qint64 nOffset);
 };
 
 #endif // XPDF_H
