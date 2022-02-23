@@ -61,19 +61,23 @@ qint64 XPDF::findStartxref()
 
     qint64 nOffset=qMax((qint64)0,nSize-0x1000);  // TODO const
 
+    bool bFound=false;
+
     while(true)
     {
-        qint64 nCurrent=find_ansiString(nOffset,-1,"startxref"); // mb TODO \r
+        qint64 nCurrent=find_signature(nOffset,-1,"'startxref'"); // \n \r
 
         if(nCurrent==-1)
         {
             break;
         }
 
+        bFound=true;
+
         nOffset=nCurrent+10; // Get the last
     }
 
-    if(nOffset!=-1)
+    if(bFound)
     {
         QString sOffset=readPDFValue(nOffset);
 
@@ -97,7 +101,7 @@ QString XPDF::readPDFValue(qint64 nOffset)
     {
         QString sSymbol=read_ansiString(nOffset+i,1);
 
-        if((sSymbol=="")||(sSymbol=="\r"))
+        if((sSymbol=="")||(sSymbol=="\r")) // TODO more checks
         {
             break;
         }
