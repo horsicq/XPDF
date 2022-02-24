@@ -36,6 +36,7 @@ public:
     virtual FT getFileType();
 
     qint64 findStartxref();
+    QMap<QString,QString> readTrailer();
     QString readPDFValue(qint64 nOffset);
 };
 

@@ -92,6 +92,44 @@ qint64 XPDF::findStartxref()
     return nResult;
 }
 
+QMap<QString,QString> XPDF::readTrailer()
+{
+    QMap<QString,QString> mapResult;
+
+    qint64 nResult=-1;
+    qint64 nSize=getSize();
+
+    qint64 nOffset=qMax((qint64)0,nSize-0x1000);  // TODO const
+
+    bool bFound=false;
+
+    while(true)
+    {
+        qint64 nCurrent=find_signature(nOffset,-1,"'trailer'"); // \n \r
+
+        if(nCurrent==-1)
+        {
+            break;
+        }
+
+        bFound=true;
+
+        nOffset=nCurrent+8; // Get the last
+    }
+
+    if(bFound)
+    {
+        QString sValue=readPDFValue(nOffset);
+
+        if(nResult==0)
+        {
+            nResult=-1;
+        }
+    }
+
+    return mapResult;
+}
+
 QString XPDF::readPDFValue(qint64 nOffset)
 {
     QString sResult;
