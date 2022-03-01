@@ -96,7 +96,6 @@ QMap<QString,QString> XPDF::readTrailer()
 {
     QMap<QString,QString> mapResult;
 
-    qint64 nResult=-1;
     qint64 nSize=getSize();
 
     qint64 nOffset=qMax((qint64)0,nSize-0x1000);  // TODO const
@@ -121,10 +120,7 @@ QMap<QString,QString> XPDF::readTrailer()
     {
         QString sValue=readPDFValue(nOffset);
 
-        if(nResult==0)
-        {
-            nResult=-1;
-        }
+        nOffset+=sValue.size();
     }
 
     return mapResult;
