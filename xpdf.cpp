@@ -118,9 +118,31 @@ QMap<QString,QString> XPDF::readTrailer()
 
     if(bFound)
     {
-        QString sValue=readPDFValue(nOffset);
+        bool bValid=false;
 
-        nOffset+=sValue.size();
+        while(true)
+        {
+            QString sRecord=readPDFValue(nOffset);
+
+            if(sRecord=="<<")
+            {
+                bValid=true;
+            }
+            else if(bValid&&XBinary::isRegExpPresent("^\\/",sRecord))
+            {
+                QString _sRecord=sRecord.section("/",1,-1);
+                QString sName=_sRecord.section(" ",0,0);
+                QString sValue=_sRecord.section(" ",1,-1);
+
+                mapResult.insert(sName,sValue);
+            }
+            else if((sRecord=="")||(sRecord==">>"))
+            {
+                break;
+            }
+
+            nOffset+=sRecord.size()+1;
+        }
     }
 
     return mapResult;
