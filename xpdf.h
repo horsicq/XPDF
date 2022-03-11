@@ -38,6 +38,8 @@ public:
     qint64 findStartxref();
     QMap<QString,QString> readTrailer();
     QString readPDFValue(qint64 nOffset);
+
+    void getInfo();
 };
 
 #endif // XPDF_H

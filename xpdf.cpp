@@ -168,3 +168,16 @@ QString XPDF::readPDFValue(qint64 nOffset)
     return sResult;
 }
 
+void XPDF::getInfo()
+{
+    QMap<QString,QString> mapTrailer=readTrailer();
+    qint64 nStartxref=findStartxref();
+
+    if(nStartxref!=-1)
+    {
+        qint64 nOffset=nStartxref;
+        QString sRecord=readPDFValue(nOffset);
+        nOffset+=sRecord.size()+1;
+    }
+}
+
