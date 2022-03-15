@@ -175,6 +175,7 @@ void XPDF::getInfo()
 
     if(nStartxref!=-1)
     {
+        // TODO "xref"
         qint64 nOffset=nStartxref;
         QString sRecord=readPDFValue(nOffset);
         nOffset+=sRecord.size()+1;
