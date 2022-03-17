@@ -177,8 +177,20 @@ void XPDF::getInfo()
     {
         // TODO "xref"
         qint64 nOffset=nStartxref;
-        QString sRecord=readPDFValue(nOffset);
-        nOffset+=sRecord.size()+1;
+
+        while(true)
+        {
+            QString sRecord=readPDFValue(nOffset);
+
+            if((sRecord==""))
+            {
+                break;
+            }
+
+            qDebug("%s",sRecord.toLatin1().data());
+
+            nOffset+=sRecord.size()+1;
+        }
     }
 }
 
