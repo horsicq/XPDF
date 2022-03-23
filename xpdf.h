@@ -34,6 +34,7 @@ public:
     bool isValid();
     virtual QString getVersion();
     virtual FT getFileType();
+    virtual bool isBigEndian();
 
     qint64 findStartxref();
     QMap<QString,QString> readTrailer();

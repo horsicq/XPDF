@@ -54,6 +54,11 @@ XBinary::FT XPDF::getFileType()
     return FT_PDF;
 }
 
+bool XPDF::isBigEndian()
+{
+    return false;
+}
+
 qint64 XPDF::findStartxref()
 {
     qint64 nResult=-1;
