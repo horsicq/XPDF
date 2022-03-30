@@ -175,6 +175,7 @@ QString XPDF::readPDFValue(qint64 nOffset)
 
 void XPDF::getInfo()
 {
+    // TODO all streams
     QMap<QString,QString> mapTrailer=readTrailer();
     qint64 nStartxref=findStartxref();
 
