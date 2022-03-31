@@ -184,6 +184,8 @@ void XPDF::getInfo()
         // TODO "xref"
         qint64 nOffset=nStartxref;
 
+        bool bValid=false;
+
 //        while(true)
         for(qint32 i=0;i<210;i++) // TODO size
         {
@@ -192,6 +194,11 @@ void XPDF::getInfo()
             if((sRecord==""))
             {
                 break;
+            }
+
+            if(sRecord=="xref")
+            {
+                bValid=true;
             }
 
             qDebug("%s",sRecord.toLatin1().data());
