@@ -187,7 +187,7 @@ void XPDF::getInfo()
         bool bValid=false;
 
 //        while(true)
-        for(qint32 i=0;i<210;i++) // TODO size
+        for(qint32 i=0;i<210;i++) // TODO size from trailer
         {
             QString sRecord=readPDFValue(nOffset);
 
