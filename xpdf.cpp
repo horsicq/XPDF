@@ -179,6 +179,8 @@ void XPDF::getInfo()
     QMap<QString,QString> mapTrailer=readTrailer();
     qint64 nStartxref=findStartxref();
 
+    QList<XPDF_DEF::OBJECTRECORD> listObjectRecords;
+
     if(nStartxref!=-1)
     {
         // TODO "xref"
@@ -187,7 +189,7 @@ void XPDF::getInfo()
         bool bValid=false;
 
 //        while(true)
-        for(qint32 i=0;i<210;i++) // TODO size from trailer
+        while(true) // TODO size from trailer
         {
             QString sRecord=readPDFValue(nOffset);
 
@@ -200,11 +202,62 @@ void XPDF::getInfo()
             {
                 bValid=true;
             }
+            else
+            {
+                QString sID=sRecord.section(" ",0,0);
+                qint32 nNumberOfObjects=sRecord.section(" ",1,1).toUInt();
+
+                bool bLast=false;
+
+                if(sID==mapTrailer.value("Size"))
+                {
+                    bLast=true;
+                }
+
+                nOffset+=sRecord.size()+1;
+
+                for(qint32 i=0;i<nNumberOfObjects;i++)
+                {
+                    QString sObjectRecord=readPDFValue(nOffset);
+
+                    XPDF_DEF::OBJECTRECORD record={};
+
+                    record.nOffset=sObjectRecord.section(" ",0,0).toULongLong();
+                    record.nID=sID.toULongLong()+sObjectRecord.section(" ",1,1).toULongLong();
+
+                    QString sStatus=sObjectRecord.section(" ",2,2);
+
+                    if(sStatus=="f")
+                    {
+                        record.bIsFree=true;
+                    }
+
+                    listObjectRecords.append(record);
+
+                    qDebug("%s",sObjectRecord.toLatin1().data());
+
+                    nOffset+=sObjectRecord.size()+1;
+                }
+
+                if(bLast)
+                {
+                    break;
+                }
+            }
 
             qDebug("%s",sRecord.toLatin1().data());
 
             nOffset+=sRecord.size()+1;
         }
+    }
+
+    qint32 nNumberOfObjects=listObjectRecords.count();
+
+    for(qint32 i=0;i<nNumberOfObjects;i++)
+    {
+        QString sObjectRecord=readPDFValue(listObjectRecords.at(i).nOffset);
+
+        qDebug("%s",sObjectRecord.toLatin1().data());
     }
 }
 

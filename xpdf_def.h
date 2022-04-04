@@ -21,10 +21,15 @@
 #ifndef XPDF_DEF_H
 #define XPDF_DEF_H
 
-#include "xpdf.h"
+#include <QtGlobal>
 
 namespace XPDF_DEF
 {
-
+    struct OBJECTRECORD
+    {
+        quint64 nID;
+        qint64 nOffset;
+        bool bIsFree;
+    };
 }
 #endif // XPDF_DEF_H
