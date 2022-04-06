@@ -258,6 +258,8 @@ void XPDF::getInfo()
         QString sObjectRecord=readPDFValue(listObjectRecords.at(i).nOffset);
 
         qDebug("%s",sObjectRecord.toLatin1().data());
+
+        // TODO
     }
 }
 
