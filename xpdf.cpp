@@ -255,11 +255,30 @@ void XPDF::getInfo()
 
     for(qint32 i=0;i<nNumberOfObjects;i++)
     {
-        QString sObjectRecord=readPDFValue(listObjectRecords.at(i).nOffset);
+        handleObject(listObjectRecords.at(i).nOffset);
+    }
+}
 
-        qDebug("%s",sObjectRecord.toLatin1().data());
+void XPDF::handleObject(qint64 nOffset)
+{
+    while(true)
+    {
+        QString sRecord=readPDFValue(nOffset);
 
+        qDebug("%s",sRecord.toLatin1().data());
+
+        if((sRecord==""))
+        {
+            break;
+        }
+
+        if((sRecord=="endobj"))
+        {
+            break;
+        }
         // TODO
+
+        nOffset+=sRecord.size()+1;
     }
 }
 
