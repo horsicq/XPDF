@@ -271,7 +271,7 @@ void XPDF::handleObject(qint64 nOffset)
         {
             break;
         }
-
+        // TODO "obj"
         if((sRecord=="endobj"))
         {
             break;
