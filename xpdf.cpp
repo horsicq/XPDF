@@ -29,6 +29,7 @@ bool XPDF::isValid()
 {
     bool bResult=false;
 
+    // TODO more checks
     if(getSize()>4)
     {
         if(read_uint32(0)==0x46445025) // '%PDF'
