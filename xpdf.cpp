@@ -262,11 +262,13 @@ void XPDF::getInfo()
 
 void XPDF::handleObject(qint64 nOffset)
 {
+    qint32 nIndex=0;
+
     while(true)
     {
         QString sRecord=readPDFValue(nOffset);
 
-        qDebug("%s",sRecord.toLatin1().data());
+        qDebug("%d: %s",nIndex,sRecord.toLatin1().data());
 
         if((sRecord==""))
         {
@@ -280,6 +282,8 @@ void XPDF::handleObject(qint64 nOffset)
         // TODO
 
         nOffset+=sRecord.size()+1;
+
+        nIndex++;
     }
 }
 
