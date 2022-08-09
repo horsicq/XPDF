@@ -41,7 +41,7 @@ public:
     QString readPDFValue(qint64 nOffset);
 
     void getInfo();
-    void handleObject(qint64 nOffset);
+    qint64 getObjectSize(qint64 nOffset);
 };
 
 #endif // XPDF_H

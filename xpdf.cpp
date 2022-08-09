@@ -180,7 +180,7 @@ void XPDF::getInfo()
     QMap<QString,QString> mapTrailer=readTrailer();
     qint64 nStartxref=findStartxref();
 
-    QList<XPDF_DEF::OBJECTRECORD> listObjectRecords;
+    QList<XPDF_DEF::OBJECT> listObjects;
 
     if(nStartxref!=-1)
     {
@@ -221,7 +221,7 @@ void XPDF::getInfo()
                 {
                     QString sObjectRecord=readPDFValue(nOffset);
 
-                    XPDF_DEF::OBJECTRECORD record={};
+                    XPDF_DEF::OBJECT record={};
 
                     record.nOffset=sObjectRecord.section(" ",0,0).toULongLong();
                     record.nID=sID.toULongLong()+sObjectRecord.section(" ",1,1).toULongLong();
@@ -233,7 +233,9 @@ void XPDF::getInfo()
                         record.bIsFree=true;
                     }
 
-                    listObjectRecords.append(record);
+                    record.nSize=getObjectSize(record.nOffset);
+
+                    listObjects.append(record);
 
                     qDebug("%s",sObjectRecord.toLatin1().data());
 
@@ -252,23 +254,24 @@ void XPDF::getInfo()
         }
     }
 
-    qint32 nNumberOfObjects=listObjectRecords.count();
+    qint32 nNumberOfRecords=listObjects.count();
 
-    for(qint32 i=0;i<nNumberOfObjects;i++)
+    for(qint32 i=0;i<nNumberOfRecords;i++)
     {
-        handleObject(listObjectRecords.at(i).nOffset);
+        QString sRecord=QString("%1 %2 %3").arg(QString::number(i),QString::number(listObjects.at(i).nOffset),QString::number(listObjects.at(i).nSize));
+
+        qDebug("%s",sRecord.toLatin1().data());
     }
 }
 
-void XPDF::handleObject(qint64 nOffset)
+qint64 XPDF::getObjectSize(qint64 nOffset)
 {
-    qint32 nIndex=0;
+    qint64 _nOffset=nOffset;
 
     while(true)
     {
-        QString sRecord=readPDFValue(nOffset);
-
-        qDebug("%d: %s",nIndex,sRecord.toLatin1().data());
+        QString sRecord=readPDFValue(_nOffset);
+        _nOffset+=sRecord.size()+1;
 
         if((sRecord==""))
         {
@@ -279,11 +282,8 @@ void XPDF::handleObject(qint64 nOffset)
         {
             break;
         }
-        // TODO
-
-        nOffset+=sRecord.size()+1;
-
-        nIndex++;
     }
+
+    return _nOffset-nOffset;
 }
 

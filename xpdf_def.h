@@ -25,10 +25,11 @@
 
 namespace XPDF_DEF
 {
-    struct OBJECTRECORD
+    struct OBJECT
     {
         quint64 nID;
         qint64 nOffset;
+        qint64 nSize;
         bool bIsFree;
     };
 }
