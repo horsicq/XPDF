@@ -35,6 +35,7 @@ public:
     virtual QString getVersion();
     virtual FT getFileType();
     virtual bool isBigEndian();
+    virtual qint64 getFileFormatSize();
 
     qint64 findStartxref();
     QMap<QString,QString> readTrailer();

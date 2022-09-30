@@ -60,6 +60,15 @@ bool XPDF::isBigEndian()
     return false;
 }
 
+qint64 XPDF::getFileFormatSize()
+{
+    qint64 nResult=0;
+
+    // TODO
+
+    return nResult;
+}
+
 qint64 XPDF::findStartxref()
 {
     qint64 nResult=-1;
