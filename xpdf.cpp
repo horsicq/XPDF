@@ -63,8 +63,45 @@ bool XPDF::isBigEndian()
 qint64 XPDF::getFileFormatSize()
 {
     qint64 nResult=0;
+    qint64 nOffset=0;
 
-    // TODO
+    while(true)
+    {
+        qint64 nCurrent=find_signature(nOffset,-1,"'startxref'");
+
+        if(nCurrent!=-1)
+        {
+            OS_STRING osStartXref=readPDFString(nCurrent);
+
+            nCurrent+=osStartXref.nSize;
+
+            OS_STRING osOffset=readPDFString(nCurrent);
+
+            qint64 _nOffset=osOffset.sString.toLongLong();
+
+            if((_nOffset>0)&&(_nOffset<nCurrent))
+            {
+                nCurrent+=osOffset.nSize;
+
+                OS_STRING osEnd=readPDFString(nCurrent);
+
+                if(osEnd.sString=="%%EOF")
+                {
+                    nCurrent+=osEnd.nSize;
+                    nResult=nCurrent;
+
+                    break;
+                }
+            }
+        }
+        else
+        {
+            nResult=0;
+            break;
+        }
+
+        nOffset=nCurrent+10;
+    }
 
     return nResult;
 }
@@ -94,7 +131,7 @@ qint64 XPDF::findStartxref()
 
     if(bFound)
     {
-        QString sOffset=readPDFValue(nOffset);
+        QString sOffset=readPDFString(nOffset).sString;
 
         nResult=sOffset.toULongLong();
 
@@ -137,7 +174,7 @@ QMap<QString,QString> XPDF::readTrailer()
 
         while(true)
         {
-            QString sRecord=readPDFValue(nOffset);
+            QString sRecord=readPDFString(nOffset).sString;
 
             if(sRecord=="<<")
             {
@@ -163,24 +200,31 @@ QMap<QString,QString> XPDF::readTrailer()
     return mapResult;
 }
 
-QString XPDF::readPDFValue(qint64 nOffset)
+XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
 {
-    QString sResult;
+    OS_STRING result={};
+
+    result.nOffset=nOffset;
 
     // TODO optimize
     for(qint32 i=0;i<65535;i++)
     {
         QString sSymbol=read_ansiString(nOffset+i,1);
 
-        if((sSymbol=="")||(sSymbol=="\r")) // TODO more checks
+        if(sSymbol!="")
+        {
+            result.nSize++;
+        }
+
+        if((sSymbol=="")||(sSymbol=="\r")||(sSymbol=="\n")) // TODO more checks
         {
             break;
         }
 
-        sResult.append(sSymbol);
+        result.sString.append(sSymbol);
     }
 
-    return sResult;
+    return result;
 }
 
 void XPDF::getInfo()
@@ -201,21 +245,21 @@ void XPDF::getInfo()
 //        while(true)
         while(true) // TODO size from trailer
         {
-            QString sRecord=readPDFValue(nOffset);
+            OS_STRING osRecord=readPDFString(nOffset);
 
-            if((sRecord==""))
+            if(osRecord.sString=="")
             {
                 break;
             }
 
-            if(sRecord=="xref")
+            if(osRecord.sString=="xref")
             {
                 bValid=true;
             }
             else
             {
-                QString sID=sRecord.section(" ",0,0);
-                qint32 nNumberOfObjects=sRecord.section(" ",1,1).toUInt();
+                QString sID=osRecord.sString.section(" ",0,0);
+                qint32 nNumberOfObjects=osRecord.sString.section(" ",1,1).toUInt();
 
                 bool bLast=false;
 
@@ -224,18 +268,18 @@ void XPDF::getInfo()
                     bLast=true;
                 }
 
-                nOffset+=sRecord.size()+1;
+                nOffset+=osRecord.nSize;
 
                 for(qint32 i=0;i<nNumberOfObjects;i++)
                 {
-                    QString sObjectRecord=readPDFValue(nOffset);
+                    OS_STRING osString=readPDFString(nOffset);
 
                     XPDF_DEF::OBJECT record={};
 
-                    record.nOffset=sObjectRecord.section(" ",0,0).toULongLong();
-                    record.nID=sID.toULongLong()+sObjectRecord.section(" ",1,1).toULongLong();
+                    record.nOffset=osString.sString.section(" ",0,0).toULongLong();
+                    record.nID=sID.toULongLong()+osString.sString.section(" ",1,1).toULongLong();
 
-                    QString sStatus=sObjectRecord.section(" ",2,2);
+                    QString sStatus=osString.sString.section(" ",2,2);
 
                     if(sStatus=="f")
                     {
@@ -246,9 +290,9 @@ void XPDF::getInfo()
 
                     listObjects.append(record);
 
-                    qDebug("%s",sObjectRecord.toLatin1().data());
+                    qDebug("%s",osString.sString.toLatin1().data());
 
-                    nOffset+=sObjectRecord.size()+1;
+                    nOffset+=osString.nSize;
                 }
 
                 if(bLast)
@@ -257,9 +301,9 @@ void XPDF::getInfo()
                 }
             }
 
-            qDebug("%s",sRecord.toLatin1().data());
+            qDebug("%s",osRecord.sString.toLatin1().data());
 
-            nOffset+=sRecord.size()+1;
+            nOffset+=osRecord.nSize; // Check
         }
     }
 
@@ -279,15 +323,15 @@ qint64 XPDF::getObjectSize(qint64 nOffset)
 
     while(true)
     {
-        QString sRecord=readPDFValue(_nOffset);
-        _nOffset+=sRecord.size()+1;
+        OS_STRING osString=readPDFString(_nOffset);
+        _nOffset+=osString.nSize;
 
-        if((sRecord==""))
+        if(osString.sString=="")
         {
             break;
         }
         // TODO XXX XXX "obj"
-        if((sRecord=="endobj"))
+        if((osString.sString=="endobj"))
         {
             break;
         }

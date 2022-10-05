@@ -39,7 +39,7 @@ public:
 
     qint64 findStartxref();
     QMap<QString,QString> readTrailer();
-    QString readPDFValue(qint64 nOffset);
+    OS_STRING readPDFString(qint64 nOffset);
 
     void getInfo();
     qint64 getObjectSize(qint64 nOffset);
