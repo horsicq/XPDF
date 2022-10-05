@@ -156,7 +156,7 @@ QMap<QString,QString> XPDF::readTrailer()
 
     while(true)
     {
-        qint64 nCurrent=find_signature(nOffset,-1,"'trailer'"); // \n \r
+        qint64 nCurrent=find_signature(nOffset,-1,"'trailer'");
 
         if(nCurrent==-1)
         {
