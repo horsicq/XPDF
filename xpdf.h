@@ -28,6 +28,12 @@ class XPDF: public XBinary
 {
     Q_OBJECT
 
+    struct TRAILERRECORD
+    {
+        QString sName;
+        QString sValue;
+    };
+
 public:
     XPDF(QIODevice *pDevice);
 
@@ -38,7 +44,7 @@ public:
     virtual qint64 getFileFormatSize();
 
     qint64 findStartxref();
-    QMap<QString,QString> readTrailer();
+    QList<TRAILERRECORD> readTrailer();
     OS_STRING readPDFString(qint64 nOffset);
 
     void getInfo();

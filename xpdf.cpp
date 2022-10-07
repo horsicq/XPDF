@@ -144,9 +144,9 @@ qint64 XPDF::findStartxref()
     return nResult;
 }
 
-QMap<QString,QString> XPDF::readTrailer()
+QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
 {
-    QMap<QString,QString> mapResult;
+    QList<XPDF::TRAILERRECORD> listResult;
 
     qint64 nSize=getSize();
 
@@ -174,30 +174,33 @@ QMap<QString,QString> XPDF::readTrailer()
 
         while(true)
         {
-            QString sRecord=readPDFString(nOffset).sString;
+            OS_STRING osString=readPDFString(nOffset);
 
-            if(sRecord=="<<")
+            if(osString.sString=="<<")
             {
                 bValid=true;
             }
-            else if(bValid&&XBinary::isRegExpPresent("^\\/",sRecord))
+            else if(bValid&&XBinary::isRegExpPresent("^\\/",osString.sString))
             {
-                QString _sRecord=sRecord.section("/",1,-1);
-                QString sName=_sRecord.section(" ",0,0);
-                QString sValue=_sRecord.section(" ",1,-1);
+                QString _sRecord=osString.sString.section("/",1,-1);
 
-                mapResult.insert(sName,sValue);
+                TRAILERRECORD record={};
+
+                record.sName=_sRecord.section(" ",0,0);
+                record.sValue=_sRecord.section(" ",1,-1);
+
+                listResult.append(record);
             }
-            else if((sRecord=="")||(sRecord==">>"))
+            else if((osString.sString=="")||(osString.sString==">>"))
             {
                 break;
             }
 
-            nOffset+=sRecord.size()+1;
+            nOffset+=osString.nSize;
         }
     }
 
-    return mapResult;
+    return listResult;
 }
 
 XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
@@ -230,7 +233,7 @@ XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
 void XPDF::getInfo()
 {
     // TODO all streams
-    QMap<QString,QString> mapTrailer=readTrailer();
+    QList<TRAILERRECORD> listRecords=readTrailer();
     qint64 nStartxref=findStartxref();
 
     QList<XPDF_DEF::OBJECT> listObjects;
@@ -263,10 +266,10 @@ void XPDF::getInfo()
 
                 bool bLast=false;
 
-                if(sID==mapTrailer.value("Size"))
-                {
-                    bLast=true;
-                }
+//                if(sID==listRecords.value("Size"))
+//                {
+//                    bLast=true;
+//                }
 
                 nOffset+=osRecord.nSize;
 
