@@ -243,6 +243,18 @@ void XPDF::getInfo()
         // TODO "xref"
         qint64 nOffset=nStartxref;
 
+        OS_STRING osRecord=readPDFString(nOffset);
+
+        if(osRecord.sString=="xref")
+        {
+             // Cross-Reference Table
+
+        }
+        else
+        {
+            // The cross-reference stream object
+        }
+
         bool bValid=false;
 
 //        while(true)
