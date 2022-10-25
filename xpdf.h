@@ -46,7 +46,6 @@ public:
     qint64 findStartxref();
     QList<TRAILERRECORD> readTrailer();
     OS_STRING readPDFString(qint64 nOffset);
-
     void getInfo();
     qint64 getObjectSize(qint64 nOffset);
 };
