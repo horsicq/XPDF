@@ -258,7 +258,6 @@ void XPDF::getInfo()
 
         bool bValid=false;
 
-//        while(true)
         while(true) // TODO size from trailer
         {
             OS_STRING osRecord=readPDFString(nOffset);
