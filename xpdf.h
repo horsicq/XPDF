@@ -42,6 +42,7 @@ public:
     virtual FT getFileType();
     virtual bool isBigEndian();
     virtual qint64 getFileFormatSize();
+    virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
 
     qint64 findStartxref();

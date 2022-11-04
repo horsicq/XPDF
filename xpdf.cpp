@@ -108,6 +108,16 @@ qint64 XPDF::getFileFormatSize()
     return nResult;
 }
 
+QString XPDF::getFileFormatString()
+{
+    QString sResult;
+
+    sResult=QString("PDF(%1)").arg(getVersion());
+    // TODO more info
+
+    return sResult;
+}
+
 QString XPDF::getFileFormatExt()
 {
     return "pdf";
