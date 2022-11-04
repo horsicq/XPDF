@@ -108,6 +108,11 @@ qint64 XPDF::getFileFormatSize()
     return nResult;
 }
 
+QString XPDF::getFileFormatExt()
+{
+    return "pdf";
+}
+
 qint64 XPDF::findStartxref()
 {
     qint64 nResult=-1;
