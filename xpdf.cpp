@@ -63,7 +63,7 @@ bool XPDF::isBigEndian()
 qint64 XPDF::getFileFormatSize()
 {
     // TODO Check if 2 PDFs or PDF in PDF
-    // TODO Check
+    // TODO Check edited PDF
     qint64 nResult=0;
     qint64 nOffset=0;
 
