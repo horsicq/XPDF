@@ -45,7 +45,7 @@ QString XPDF::getVersion()
 {
     QString sResult;
 
-    sResult=read_ansiString(5,4);
+    sResult=read_ansiString(5,4).remove("\r").remove("\n");
 
     return sResult;
 }
