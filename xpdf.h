@@ -7,8 +7,8 @@
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -21,20 +21,18 @@
 #ifndef XPDF_H
 #define XPDF_H
 
-#include "xpdf_def.h"
 #include "xbinary.h"
+#include "xpdf_def.h"
 
-class XPDF: public XBinary
-{
+class XPDF : public XBinary {
     Q_OBJECT
 
-    struct TRAILERRECORD
-    {
+    struct TRAILERRECORD {
         QString sName;
         QString sValue;
     };
 
-public:
+   public:
     XPDF(QIODevice *pDevice);
 
     bool isValid();
@@ -52,4 +50,4 @@ public:
     qint64 getObjectSize(qint64 nOffset);
 };
 
-#endif // XPDF_H
+#endif  // XPDF_H
