@@ -32,7 +32,7 @@ class XPDF : public XBinary {
         QString sValue;
     };
 
-   public:
+public:
     XPDF(QIODevice *pDevice);
 
     bool isValid();

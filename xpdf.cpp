@@ -20,7 +20,8 @@
  */
 #include "xpdf.h"
 
-XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice) {}
+XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice) {
+}
 
 bool XPDF::isValid() {
     bool bResult = false;
@@ -44,9 +45,13 @@ QString XPDF::getVersion() {
     return sResult;
 }
 
-XBinary::FT XPDF::getFileType() { return FT_PDF; }
+XBinary::FT XPDF::getFileType() {
+    return FT_PDF;
+}
 
-bool XPDF::isBigEndian() { return false; }
+bool XPDF::isBigEndian() {
+    return false;
+}
 
 qint64 XPDF::getFileFormatSize() {
     // TODO Check if 2 PDFs or PDF in PDF
@@ -98,7 +103,9 @@ QString XPDF::getFileFormatString() {
     return sResult;
 }
 
-QString XPDF::getFileFormatExt() { return "pdf"; }
+QString XPDF::getFileFormatExt() {
+    return "pdf";
+}
 
 qint64 XPDF::findStartxref() {
     qint64 nResult = -1;
@@ -162,8 +169,7 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer() {
 
             if (osString.sString == "<<") {
                 bValid = true;
-            } else if (bValid &&
-                       XBinary::isRegExpPresent("^\\/", osString.sString)) {
+            } else if (bValid && XBinary::isRegExpPresent("^\\/", osString.sString)) {
                 QString _sRecord = osString.sString.section("/", 1, -1);
 
                 TRAILERRECORD record = {};
@@ -196,8 +202,7 @@ XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset) {
             result.nSize++;
         }
 
-        if ((sSymbol == "") || (sSymbol == "\r") ||
-            (sSymbol == "\n"))  // TODO more checks
+        if ((sSymbol == "") || (sSymbol == "\r") || (sSymbol == "\n"))  // TODO more checks
         {
             break;
         }
@@ -242,8 +247,7 @@ void XPDF::getInfo() {
                 bValid = true;
             } else {
                 QString sID = osRecord.sString.section(" ", 0, 0);
-                qint32 nNumberOfObjects =
-                    osRecord.sString.section(" ", 1, 1).toUInt();
+                qint32 nNumberOfObjects = osRecord.sString.section(" ", 1, 1).toUInt();
 
                 bool bLast = false;
 
@@ -259,11 +263,8 @@ void XPDF::getInfo() {
 
                     XPDF_DEF::OBJECT record = {};
 
-                    record.nOffset =
-                        osString.sString.section(" ", 0, 0).toULongLong();
-                    record.nID =
-                        sID.toULongLong() +
-                        osString.sString.section(" ", 1, 1).toULongLong();
+                    record.nOffset = osString.sString.section(" ", 0, 0).toULongLong();
+                    record.nID = sID.toULongLong() + osString.sString.section(" ", 1, 1).toULongLong();
 
                     QString sStatus = osString.sString.section(" ", 2, 2);
 
@@ -294,10 +295,7 @@ void XPDF::getInfo() {
     qint32 nNumberOfRecords = listObjects.count();
 
     for (qint32 i = 0; i < nNumberOfRecords; i++) {
-        QString sRecord = QString("%1 %2 %3")
-                              .arg(QString::number(i),
-                                   QString::number(listObjects.at(i).nOffset),
-                                   QString::number(listObjects.at(i).nSize));
+        QString sRecord = QString("%1 %2 %3").arg(QString::number(i), QString::number(listObjects.at(i).nOffset), QString::number(listObjects.at(i).nSize));
 
         qDebug("%s", sRecord.toLatin1().data());
     }
