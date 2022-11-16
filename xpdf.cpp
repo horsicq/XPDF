@@ -20,10 +20,12 @@
  */
 #include "xpdf.h"
 
-XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice) {
+XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
+{
 }
 
-bool XPDF::isValid() {
+bool XPDF::isValid()
+{
     bool bResult = false;
 
     // TODO more checks !!!
@@ -37,7 +39,8 @@ bool XPDF::isValid() {
     return bResult;
 }
 
-QString XPDF::getVersion() {
+QString XPDF::getVersion()
+{
     QString sResult;
 
     sResult = read_ansiString(5, 4).remove("\r").remove("\n");
@@ -45,15 +48,18 @@ QString XPDF::getVersion() {
     return sResult;
 }
 
-XBinary::FT XPDF::getFileType() {
+XBinary::FT XPDF::getFileType()
+{
     return FT_PDF;
 }
 
-bool XPDF::isBigEndian() {
+bool XPDF::isBigEndian()
+{
     return false;
 }
 
-qint64 XPDF::getFileFormatSize() {
+qint64 XPDF::getFileFormatSize()
+{
     // TODO Check if 2 PDFs or PDF in PDF
     // TODO Check edited PDF
     qint64 nResult = 0;
@@ -94,7 +100,8 @@ qint64 XPDF::getFileFormatSize() {
     return nResult;
 }
 
-QString XPDF::getFileFormatString() {
+QString XPDF::getFileFormatString()
+{
     QString sResult;
 
     sResult = QString("PDF(%1)").arg(getVersion());
@@ -103,11 +110,13 @@ QString XPDF::getFileFormatString() {
     return sResult;
 }
 
-QString XPDF::getFileFormatExt() {
+QString XPDF::getFileFormatExt()
+{
     return "pdf";
 }
 
-qint64 XPDF::findStartxref() {
+qint64 XPDF::findStartxref()
+{
     qint64 nResult = -1;
     qint64 nSize = getSize();
 
@@ -140,7 +149,8 @@ qint64 XPDF::findStartxref() {
     return nResult;
 }
 
-QList<XPDF::TRAILERRECORD> XPDF::readTrailer() {
+QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
+{
     QList<XPDF::TRAILERRECORD> listResult;
 
     qint64 nSize = getSize();
@@ -189,7 +199,8 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer() {
     return listResult;
 }
 
-XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset) {
+XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
+{
     OS_STRING result = {};
 
     result.nOffset = nOffset;
@@ -213,7 +224,8 @@ XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset) {
     return result;
 }
 
-void XPDF::getInfo() {
+void XPDF::getInfo()
+{
     // TODO all streams
     QList<TRAILERRECORD> listRecords = readTrailer();
     qint64 nStartxref = findStartxref();
@@ -301,7 +313,8 @@ void XPDF::getInfo() {
     }
 }
 
-qint64 XPDF::getObjectSize(qint64 nOffset) {
+qint64 XPDF::getObjectSize(qint64 nOffset)
+{
     qint64 _nOffset = nOffset;
 
     while (true) {
