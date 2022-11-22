@@ -20,8 +20,7 @@
  */
 #include "xpdf.h"
 
-XPDF::XPDF(QIODevice *pDevice)
-    : XBinary(pDevice)
+XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
 {
 }
 
