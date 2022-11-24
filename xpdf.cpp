@@ -115,38 +115,91 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
-qint64 XPDF::findStartxref()
+XBinary::_MEMORY_MAP XPDF::getMemoryMap()
 {
-    qint64 nResult = -1;
+    XBinary::_MEMORY_MAP result = {};
+
+    qint32 nIndex = 0;
+
+    {
+        OS_STRING osHeader = readPDFString(0);
+
+        _MEMORY_RECORD record = {};
+
+        record.nIndex = nIndex++;
+        record.type = MMT_HEADER;
+        record.nOffset = 0;
+        record.nSize = osHeader.nSize;
+        record.nAddress = -1;
+        record.sName = tr("Header");
+
+        result.listRecords.append(record);
+    }
+
+    STARTHREF startxref = findStartxref();
+
+    {
+        _MEMORY_RECORD record = {};
+
+        record.nIndex = nIndex++;
+        record.type = MMT_FOOTER;
+        record.nOffset = startxref.nFooterOffset;
+        record.nSize = startxref.nFooterSize;
+        record.nAddress = -1;
+
+        result.listRecords.append(record);
+    }
+
+    // TODO
+
+    return result;
+}
+
+XPDF::STARTHREF XPDF::findStartxref()
+{
+    STARTHREF result = {};
+
     qint64 nSize = getSize();
 
     qint64 nOffset = qMax((qint64)0, nSize - 0x1000);  // TODO const
 
-    bool bFound = false;
-
     while (true) {
-        qint64 nCurrent = find_signature(nOffset, -1, "'startxref'");  // \n \r
+        qint64 nStartXref = find_signature(nOffset, -1, "'startxref'");  // \n \r
 
-        if (nCurrent == -1) {
+        if (nStartXref != -1) {
+            qint64 nCurrent = nStartXref;
+
+            OS_STRING osStartXref = readPDFString(nCurrent);
+
+            nCurrent += osStartXref.nSize;
+
+            OS_STRING osOffset = readPDFString(nCurrent);
+
+            qint64 _nOffset = osOffset.sString.toLongLong();
+
+            if ((_nOffset > 0) && (_nOffset < nCurrent)) {
+                nCurrent += osOffset.nSize;
+
+                OS_STRING osEnd = readPDFString(nCurrent);
+
+                if (osEnd.sString == "%%EOF") {
+                    nCurrent += osEnd.nSize;
+
+                    result.nXrefOffset = _nOffset;
+                    result.nFooterOffset = nStartXref;
+                    result.nFooterSize = nCurrent - nStartXref;
+
+                    break;
+                }
+            }
+        } else {
             break;
         }
 
-        bFound = true;
-
-        nOffset = nCurrent + 10;  // Get the last
+        nOffset = nStartXref + 10;  // Get the last
     }
 
-    if (bFound) {
-        QString sOffset = readPDFString(nOffset).sString;
-
-        nResult = sOffset.toULongLong();
-
-        if (nResult == 0) {
-            nResult = -1;
-        }
-    }
-
-    return nResult;
+    return result;
 }
 
 QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
@@ -226,91 +279,91 @@ XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
 
 void XPDF::getInfo()
 {
-    // TODO all streams
-    QList<TRAILERRECORD> listRecords = readTrailer();
-    qint64 nStartxref = findStartxref();
+//    // TODO all streams
+//    QList<TRAILERRECORD> listRecords = readTrailer();
+//    qint64 nStartxref = findStartxref();
 
-    QList<XPDF_DEF::OBJECT> listObjects;
+//    QList<XPDF_DEF::OBJECT> listObjects;
 
-    if (nStartxref != -1) {
-        // TODO "xref"
-        qint64 nOffset = nStartxref;
+//    if (nStartxref != -1) {
+//        // TODO "xref"
+//        qint64 nOffset = nStartxref;
 
-        OS_STRING osRecord = readPDFString(nOffset);
+//        OS_STRING osRecord = readPDFString(nOffset);
 
-        if (osRecord.sString == "xref") {
-            // Cross-Reference Table
+//        if (osRecord.sString == "xref") {
+//            // Cross-Reference Table
 
-        } else {
-            // The cross-reference stream object
-        }
+//        } else {
+//            // The cross-reference stream object
+//        }
 
-        bool bValid = false;
+//        bool bValid = false;
 
-        while (true)  // TODO size from trailer
-        {
-            OS_STRING osRecord = readPDFString(nOffset);
+//        while (true)  // TODO size from trailer
+//        {
+//            OS_STRING osRecord = readPDFString(nOffset);
 
-            if (osRecord.sString == "") {
-                break;
-            }
+//            if (osRecord.sString == "") {
+//                break;
+//            }
 
-            if (osRecord.sString == "xref") {
-                bValid = true;
-            } else {
-                QString sID = osRecord.sString.section(" ", 0, 0);
-                qint32 nNumberOfObjects = osRecord.sString.section(" ", 1, 1).toUInt();
+//            if (osRecord.sString == "xref") {
+//                bValid = true;
+//            } else {
+//                QString sID = osRecord.sString.section(" ", 0, 0);
+//                qint32 nNumberOfObjects = osRecord.sString.section(" ", 1, 1).toUInt();
 
-                bool bLast = false;
+//                bool bLast = false;
 
-                //                if(sID==listRecords.value("Size"))
-                //                {
-                //                    bLast=true;
-                //                }
+//                //                if(sID==listRecords.value("Size"))
+//                //                {
+//                //                    bLast=true;
+//                //                }
 
-                nOffset += osRecord.nSize;
+//                nOffset += osRecord.nSize;
 
-                for (qint32 i = 0; i < nNumberOfObjects; i++) {
-                    OS_STRING osString = readPDFString(nOffset);
+//                for (qint32 i = 0; i < nNumberOfObjects; i++) {
+//                    OS_STRING osString = readPDFString(nOffset);
 
-                    XPDF_DEF::OBJECT record = {};
+//                    XPDF_DEF::OBJECT record = {};
 
-                    record.nOffset = osString.sString.section(" ", 0, 0).toULongLong();
-                    record.nID = sID.toULongLong() + osString.sString.section(" ", 1, 1).toULongLong();
+//                    record.nOffset = osString.sString.section(" ", 0, 0).toULongLong();
+//                    record.nID = sID.toULongLong() + osString.sString.section(" ", 1, 1).toULongLong();
 
-                    QString sStatus = osString.sString.section(" ", 2, 2);
+//                    QString sStatus = osString.sString.section(" ", 2, 2);
 
-                    if (sStatus == "f") {
-                        record.bIsFree = true;
-                    }
+//                    if (sStatus == "f") {
+//                        record.bIsFree = true;
+//                    }
 
-                    record.nSize = getObjectSize(record.nOffset);
+//                    record.nSize = getObjectSize(record.nOffset);
 
-                    listObjects.append(record);
+//                    listObjects.append(record);
 
-                    qDebug("%s", osString.sString.toLatin1().data());
+//                    qDebug("%s", osString.sString.toLatin1().data());
 
-                    nOffset += osString.nSize;
-                }
+//                    nOffset += osString.nSize;
+//                }
 
-                if (bLast) {
-                    break;
-                }
-            }
+//                if (bLast) {
+//                    break;
+//                }
+//            }
 
-            qDebug("%s", osRecord.sString.toLatin1().data());
+//            qDebug("%s", osRecord.sString.toLatin1().data());
 
-            nOffset += osRecord.nSize;  // Check
-        }
-    }
+//            nOffset += osRecord.nSize;  // Check
+//        }
+//    }
 
-    qint32 nNumberOfRecords = listObjects.count();
+//    qint32 nNumberOfRecords = listObjects.count();
 
-    for (qint32 i = 0; i < nNumberOfRecords; i++) {
-        QString sRecord = QString("%1 %2 %3").arg(QString::number(i), QString::number(listObjects.at(i).nOffset), QString::number(listObjects.at(i).nSize));
+//    for (qint32 i = 0; i < nNumberOfRecords; i++) {
+//        QString sRecord = QString("%1 %2 %3").arg(QString::number(i), QString::number(listObjects.at(i).nOffset), QString::number(listObjects.at(i).nSize));
 
-        qDebug("%s", sRecord.toLatin1().data());
-    }
+//        qDebug("%s", sRecord.toLatin1().data());
+//    }
 }
 
 qint64 XPDF::getObjectSize(qint64 nOffset)

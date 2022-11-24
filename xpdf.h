@@ -42,8 +42,15 @@ public:
     virtual qint64 getFileFormatSize();
     virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
+    virtual _MEMORY_MAP getMemoryMap();
 
-    qint64 findStartxref();
+    struct STARTHREF {
+        qint64 nXrefOffset;
+        qint64 nFooterOffset;
+        qint64 nFooterSize;
+    };
+
+    STARTHREF findStartxref();
     QList<TRAILERRECORD> readTrailer();
     OS_STRING readPDFString(qint64 nOffset);
     void getInfo();
