@@ -138,6 +138,47 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap()
 
     STARTHREF startxref = findStartxref();
 
+    OS_STRING osHref = readPDFString(startxref.nXrefOffset);
+
+    if (osHref.sString == "xref") {
+        qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
+
+        while (true) {
+            OS_STRING osSection = readPDFString(nCurrentOffset);
+
+            quint64 nID = osSection.sString.section(" ",0,0).toULongLong();
+            quint64 nNumberOfObjects = osSection.sString.section(" ",1,1).toULongLong();
+
+            nCurrentOffset += osSection.nSize;
+
+            if(nNumberOfObjects) {
+                for(qint32 i = 0; i < nNumberOfObjects; i++) {
+                    OS_STRING osObject = readPDFString(nCurrentOffset);
+
+                    qint64 nObjectOffset = osObject.sString.section(" ",0,0).toULongLong();
+
+                    {
+                        _MEMORY_RECORD record = {};
+
+                        record.nIndex = nIndex++;
+                        record.type = MMT_OBJECT;
+                        record.nOffset = nObjectOffset;
+                        record.nSize = getObjectSize(nObjectOffset);
+                        record.nAddress = -1;
+                        record.nID = nID + i;
+                        record.sName = QString("%1 %2").arg(tr("Object"),QString::number(record.nID));
+
+                        result.listRecords.append(record);
+                    }
+
+                    nCurrentOffset += osObject.nSize;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
     {
         _MEMORY_RECORD record = {};
 
@@ -146,11 +187,10 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap()
         record.nOffset = startxref.nFooterOffset;
         record.nSize = startxref.nFooterSize;
         record.nAddress = -1;
+        record.sName = tr("Footer");
 
         result.listRecords.append(record);
     }
-
-    // TODO
 
     return result;
 }
