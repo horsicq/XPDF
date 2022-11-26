@@ -140,6 +140,18 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap()
 
     OS_STRING osHref = readPDFString(startxref.nXrefOffset);
 
+    {
+        _MEMORY_RECORD record = {};
+
+        record.nIndex = nIndex++;
+        record.type = MMT_DATA;
+        record.nOffset = startxref.nXrefOffset;
+        record.nSize = 10;
+        record.nAddress = -1;
+
+        result.listRecords.append(record);
+    }
+
     if (osHref.sString == "xref") {
         qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
 
