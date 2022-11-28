@@ -115,7 +115,7 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
-XBinary::_MEMORY_MAP XPDF::getMemoryMap()
+XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 {
     XBinary::_MEMORY_MAP result = {};
 
