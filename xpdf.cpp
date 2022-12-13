@@ -117,7 +117,11 @@ QString XPDF::getFileFormatExt()
 
 XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 {
-    Q_UNUSED(pPdStruct)
+    PDSTRUCT ppStructEmpty = {};
+
+    if (!pPdStruct) {
+        pPdStruct = &ppStructEmpty;
+    }
 
     XBinary::_MEMORY_MAP result = {};
 
@@ -159,7 +163,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
     if (osHref.sString == "xref") {
         qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
 
-        while (true) {
+        while (!pPdStruct->bIsStop) {
             OS_STRING osSection = readPDFString(nCurrentOffset);
 
             quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
