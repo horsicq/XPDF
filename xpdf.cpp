@@ -69,18 +69,18 @@ qint64 XPDF::getFileFormatSize()
         qint64 nCurrent = find_signature(nOffset, -1, "'startxref'");  // TODO PDStruct
 
         if (nCurrent != -1) {
-            OS_STRING osStartXref = readPDFString(nCurrent);
+            OS_STRING osStartXref = _readPDFString(nCurrent);
 
             nCurrent += osStartXref.nSize;
 
-            OS_STRING osOffset = readPDFString(nCurrent);
+            OS_STRING osOffset = _readPDFString(nCurrent);
 
             qint64 _nOffset = osOffset.sString.toLongLong();
 
             if ((_nOffset > 0) && (_nOffset < nCurrent)) {
                 nCurrent += osOffset.nSize;
 
-                OS_STRING osEnd = readPDFString(nCurrent);
+                OS_STRING osEnd = _readPDFString(nCurrent);
 
                 if (osEnd.sString == "%%EOF") {
                     nCurrent += osEnd.nSize;
@@ -130,14 +130,14 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
     qint32 nIndex = 0;
 
     {
-        OS_STRING osHeader = readPDFString(0);
+        OS_STRING osHeader = _readPDFString(0);
 
         _MEMORY_RECORD record = {};
 
         record.nIndex = nIndex++;
         record.type = MMT_HEADER;
         record.nOffset = 0;
-        record.nSize = osHeader.nSize;
+        record.nSize = osHeader.nSize + 1;
         record.nAddress = -1;
         record.sName = tr("Header");
 
@@ -146,7 +146,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 
     STARTHREF startxref = findStartxref();
 
-    OS_STRING osHref = readPDFString(startxref.nXrefOffset);
+    OS_STRING osHref = _readPDFString(startxref.nXrefOffset);
 
     {
         _MEMORY_RECORD record = {};
@@ -164,7 +164,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
         qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
 
         while (!pPdStruct->bIsStop) {
-            OS_STRING osSection = readPDFString(nCurrentOffset);
+            OS_STRING osSection = _readPDFString(nCurrentOffset);
 
             quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
             quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
@@ -173,7 +173,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 
             if (nNumberOfObjects) {
                 for (qint32 i = 0; i < nNumberOfObjects; i++) {
-                    OS_STRING osObject = readPDFString(nCurrentOffset);
+                    OS_STRING osObject = _readPDFString(nCurrentOffset);
 
                     qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
@@ -229,18 +229,18 @@ XPDF::STARTHREF XPDF::findStartxref()
         if (nStartXref != -1) {
             qint64 nCurrent = nStartXref;
 
-            OS_STRING osStartXref = readPDFString(nCurrent);
+            OS_STRING osStartXref = _readPDFString(nCurrent);
 
             nCurrent += osStartXref.nSize;
 
-            OS_STRING osOffset = readPDFString(nCurrent);
+            OS_STRING osOffset = _readPDFString(nCurrent);
 
             qint64 _nOffset = osOffset.sString.toLongLong();
 
             if ((_nOffset > 0) && (_nOffset < nCurrent)) {
                 nCurrent += osOffset.nSize;
 
-                OS_STRING osEnd = readPDFString(nCurrent);
+                OS_STRING osEnd = _readPDFString(nCurrent);
 
                 if (osEnd.sString == "%%EOF") {
                     nCurrent += osEnd.nSize;
@@ -288,7 +288,7 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
         bool bValid = false;
 
         while (true) {
-            OS_STRING osString = readPDFString(nOffset);
+            OS_STRING osString = _readPDFString(nOffset);
 
             if (osString.sString == "<<") {
                 bValid = true;
@@ -312,7 +312,7 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
     return listResult;
 }
 
-XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
 {
     OS_STRING result = {};
 
@@ -332,6 +332,31 @@ XBinary::OS_STRING XPDF::readPDFString(qint64 nOffset)
         }
 
         result.sString.append(sSymbol);
+
+        if (sSymbol == "(") {
+            OS_STRING _unicode = readPDFUnicodeString(nOffset + i +1);
+
+            result.sString.append(_unicode.sString);
+            i += _unicode.nSize;
+        }
+    }
+
+    return result;
+}
+
+XBinary::OS_STRING XPDF::readPDFUnicodeString(qint64 nOffset)
+{
+    OS_STRING result = {};
+
+    result.nOffset = nOffset;
+
+    quint16 nBOF = read_uint16(nOffset);
+
+    if (nBOF == 0xFFFE) {
+        nOffset += 2;
+
+        result.sString = read_unicodeString(nOffset, 65535, true);
+        result.nSize = 2 + result.sString.size() * 2;
     }
 
     return result;
@@ -431,7 +456,7 @@ qint64 XPDF::getObjectSize(qint64 nOffset)
     qint64 _nOffset = nOffset;
 
     while (true) {
-        OS_STRING osString = readPDFString(_nOffset);
+        OS_STRING osString = _readPDFString(_nOffset);
         _nOffset += osString.nSize;
 
         if (osString.sString == "") {
