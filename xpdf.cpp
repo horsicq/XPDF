@@ -175,20 +175,22 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
                 for (qint32 i = 0; i < nNumberOfObjects; i++) {
                     OS_STRING osObject = _readPDFString(nCurrentOffset);
 
-                    qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
+                    if (i > 0) {
+                        qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
-                    {
-                        _MEMORY_RECORD record = {};
+                        {
+                            _MEMORY_RECORD record = {};
 
-                        record.nIndex = nIndex++;
-                        record.type = MMT_OBJECT;
-                        record.nOffset = nObjectOffset;
-                        record.nSize = getObjectSize(nObjectOffset);
-                        record.nAddress = -1;
-                        record.nID = nID + i;
-                        record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+                            record.nIndex = nIndex++;
+                            record.type = MMT_OBJECT;
+                            record.nOffset = nObjectOffset;
+                            record.nSize = getObjectSize(nObjectOffset);
+                            record.nAddress = -1;
+                            record.nID = nID + i;
+                            record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
 
-                        result.listRecords.append(record);
+                            result.listRecords.append(record);
+                        }
                     }
 
                     nCurrentOffset += osObject.nSize;
@@ -334,7 +336,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
         result.sString.append(sSymbol);
 
         if (sSymbol == "(") {
-            OS_STRING _unicode = readPDFUnicodeString(nOffset + i +1);
+            OS_STRING _unicode = readPDFValue(nOffset + i +1);
 
             result.sString.append(_unicode.sString);
             i += _unicode.nSize;
@@ -344,7 +346,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
     return result;
 }
 
-XBinary::OS_STRING XPDF::readPDFUnicodeString(qint64 nOffset)
+XBinary::OS_STRING XPDF::readPDFValue(qint64 nOffset)
 {
     OS_STRING result = {};
 
@@ -456,6 +458,7 @@ qint64 XPDF::getObjectSize(qint64 nOffset)
     qint64 _nOffset = nOffset;
 
     while (true) {
+        // TODO Read Object
         OS_STRING osString = _readPDFString(_nOffset);
         _nOffset += osString.nSize;
 
