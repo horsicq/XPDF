@@ -33,6 +33,12 @@ class XPDF : public XBinary {
     };
 
 public:
+    struct STARTHREF {
+        qint64 nXrefOffset;
+        qint64 nFooterOffset;
+        qint64 nFooterSize;
+    };
+
     XPDF(QIODevice *pDevice);
 
     bool isValid();
@@ -43,12 +49,6 @@ public:
     virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
     virtual _MEMORY_MAP getMemoryMap(PDSTRUCT *pPdStruct = nullptr);
-
-    struct STARTHREF {
-        qint64 nXrefOffset;
-        qint64 nFooterOffset;
-        qint64 nFooterSize;
-    };
 
     STARTHREF findStartxref();
     QList<TRAILERRECORD> readTrailer();
