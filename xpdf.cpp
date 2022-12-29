@@ -117,10 +117,11 @@ QString XPDF::getFileFormatExt()
 
 XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 {
-    PDSTRUCT ppStructEmpty = {};
+    PDSTRUCT pdStructEmpty = {};
 
     if (!pPdStruct) {
-        pPdStruct = &ppStructEmpty;
+        XBinary::_pdStructInit(&pdStructEmpty);
+        pPdStruct = &pdStructEmpty;
     }
 
     XBinary::_MEMORY_MAP result = {};
