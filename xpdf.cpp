@@ -336,7 +336,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
         result.sString.append(sSymbol);
 
         if (sSymbol == "(") {
-            OS_STRING _unicode = readPDFValue(nOffset + i +1);
+            OS_STRING _unicode = readPDFValue(nOffset + i + 1);
 
             result.sString.append(_unicode.sString);
             i += _unicode.nSize;
