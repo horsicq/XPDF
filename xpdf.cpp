@@ -173,7 +173,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
             nCurrentOffset += osSection.nSize;
 
             if (nNumberOfObjects) {
-                for (qint32 i = 0; i < nNumberOfObjects; i++) {
+                for (quint64 i = 0; i < nNumberOfObjects; i++) {
                     OS_STRING osObject = _readPDFString(nCurrentOffset);
 
                     if (i > 0) {
