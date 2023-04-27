@@ -126,7 +126,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(PDSTRUCT *pPdStruct)
 
     XBinary::_MEMORY_MAP result = {};
 
-    result.nRawSize = getSize();
+    result.nBinarySize = getSize();
 
     qint32 nIndex = 0;
 
