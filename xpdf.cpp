@@ -29,6 +29,7 @@ bool XPDF::isValid()
     bool bResult = false;
 
     // TODO more checks !!!
+    // 1.0-2.0
     if (getSize() > 4) {
         if (read_uint32(0) == 0x46445025)  // '%PDF'
         {
@@ -341,6 +342,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
 
             result.sString.append(_unicode.sString);
             i += _unicode.nSize;
+            result.nSize += _unicode.nSize;
         }
     }
 
@@ -358,7 +360,20 @@ XBinary::OS_STRING XPDF::readPDFValue(qint64 nOffset)
     if (nBOF == 0xFFFE) {
         nOffset += 2;
 
-        result.sString = read_unicodeString(nOffset, 65535, true);
+        qint64 _nOffset = nOffset;
+
+        while (true) {
+            quint16 nWord = read_uint16(_nOffset, true);
+            if ((nWord == 0) || (nWord == 0x290a)) {
+                break;
+            }
+
+            _nOffset += 2;
+        }
+
+        qint32 nSize = (_nOffset - nOffset) / 2;
+
+        result.sString = read_unicodeString(nOffset, nSize, true);
         result.nSize = 2 + result.sString.size() * 2;
     }
 
