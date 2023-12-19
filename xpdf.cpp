@@ -116,8 +116,20 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
+QList<XBinary::MAPMODE> XPDF::getMapModesList(PDSTRUCT *pPdStruct)
+{
+    Q_UNUSED(pPdStruct)
+
+    QList<MAPMODE> listResult;
+
+    listResult.append(MAPMODE_REGIONS);
+
+    return listResult;
+}
+
 XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 {
+    Q_UNUSED(mapMode)
     // TODO Check streams
     PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
 
