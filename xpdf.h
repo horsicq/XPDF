@@ -41,7 +41,7 @@ public:
 
     XPDF(QIODevice *pDevice);
 
-    bool isValid();
+    virtual bool isValid(PDSTRUCT *pPdStruct = nullptr);
     virtual QString getVersion();
     virtual FT getFileType();
     virtual bool isBigEndian();
