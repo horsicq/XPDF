@@ -54,9 +54,9 @@ XBinary::FT XPDF::getFileType()
     return FT_PDF;
 }
 
-bool XPDF::isBigEndian()
+XBinary::ENDIAN XPDF::getEndian()
 {
-    return false;
+    return ENDIAN_UNKNOWN;
 }
 
 qint64 XPDF::getFileFormatSize()

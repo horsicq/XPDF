@@ -44,7 +44,7 @@ public:
     virtual bool isValid(PDSTRUCT *pPdStruct = nullptr);
     virtual QString getVersion();
     virtual FT getFileType();
-    virtual bool isBigEndian();
+    virtual ENDIAN getEndian();
     virtual qint64 getFileFormatSize();
     virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
