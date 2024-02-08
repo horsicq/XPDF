@@ -26,6 +26,8 @@ XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
 
 bool XPDF::isValid(PDSTRUCT *pPdStruct)
 {
+    Q_UNUSED(pPdStruct)
+
     bool bResult = false;
 
     // TODO more checks !!!
