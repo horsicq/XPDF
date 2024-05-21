@@ -200,7 +200,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
                             record.nIndex = nIndex++;
                             record.type = MMT_OBJECT;
                             record.nOffset = nObjectOffset;
-                            record.nSize = getObjectSize(nObjectOffset);
+                            record.nSize = getObjectSize(nObjectOffset, pPdStruct);
                             record.nAddress = -1;
                             record.nID = nID + i;
                             record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
@@ -483,11 +483,11 @@ void XPDF::getInfo()
     //    }
 }
 
-qint64 XPDF::getObjectSize(qint64 nOffset)
+qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     qint64 _nOffset = nOffset;
 
-    while (true) {
+    while (!(pPdStruct->bIsStop)) {
         // TODO Read Object
         OS_STRING osString = _readPDFString(_nOffset);
         _nOffset += osString.nSize;
