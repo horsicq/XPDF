@@ -49,10 +49,10 @@ public:
     virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
 
-    virtual QList<MAPMODE> getMapModesList(PDSTRUCT *pPdStruct = nullptr);
+    static QList<MAPMODE> getMapModesList();
     virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr);
 
-    STARTHREF findStartxref();           // TODO PDSTRUCT
+    STARTHREF findStartxref(PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer();  // TODO PDSTRUCT
     OS_STRING _readPDFString(qint64 nOffset);
     OS_STRING readPDFValue(qint64 nOffset);

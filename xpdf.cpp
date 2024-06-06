@@ -118,10 +118,8 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
-QList<XBinary::MAPMODE> XPDF::getMapModesList(PDSTRUCT *pPdStruct)
+QList<XBinary::MAPMODE> XPDF::getMapModesList()
 {
-    Q_UNUSED(pPdStruct)
-
     QList<MAPMODE> listResult;
 
     listResult.append(MAPMODE_REGIONS);
@@ -160,7 +158,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         result.listRecords.append(record);
     }
 
-    STARTHREF startxref = findStartxref();
+    STARTHREF startxref = findStartxref(pPdStruct);
 
     OS_STRING osHref = _readPDFString(startxref.nXrefOffset);
 
@@ -233,16 +231,22 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     return result;
 }
 
-XPDF::STARTHREF XPDF::findStartxref()
+XPDF::STARTHREF XPDF::findStartxref(PDSTRUCT *pPdStruct)
 {
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+
     STARTHREF result = {};
 
     qint64 nSize = getSize();
 
     qint64 nOffset = qMax((qint64)0, nSize - 0x1000);  // TODO const
 
-    while (true) {
-        qint64 nStartXref = find_signature(nOffset, -1, "'startxref'");  // \n \r
+    while (!(pPdStruct->bIsStop)) {
+        qint64 nStartXref = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // \n \r
 
         if (nStartXref != -1) {
             qint64 nCurrent = nStartXref;
