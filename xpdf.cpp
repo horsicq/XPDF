@@ -284,8 +284,14 @@ XPDF::STARTHREF XPDF::findStartxref(PDSTRUCT *pPdStruct)
     return result;
 }
 
-QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
+QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
 {
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+
     QList<XPDF::TRAILERRECORD> listResult;
 
     qint64 nSize = getSize();
@@ -295,7 +301,7 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer()
     bool bFound = false;
 
     while (true) {
-        qint64 nCurrent = find_signature(nOffset, -1, "'trailer'");
+        qint64 nCurrent = find_signature(nOffset, -1, "'trailer'", 0, pPdStruct);
 
         if (nCurrent == -1) {
             break;
