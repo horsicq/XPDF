@@ -61,7 +61,7 @@ XBinary::ENDIAN XPDF::getEndian()
     return ENDIAN_UNKNOWN;
 }
 
-qint64 XPDF::getFileFormatSize()
+qint64 XPDF::getFileFormatSize(PDSTRUCT *pPdStruct)
 {
     // TODO Check if 2 PDFs or PDF in PDF
     // TODO Check edited PDF
@@ -69,7 +69,7 @@ qint64 XPDF::getFileFormatSize()
     qint64 nOffset = 0;
 
     while (true) {
-        qint64 nCurrent = find_signature(nOffset, -1, "'startxref'");  // TODO PDStruct
+        qint64 nCurrent = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // TODO PDStruct
 
         if (nCurrent != -1) {
             OS_STRING osStartXref = _readPDFString(nCurrent);
