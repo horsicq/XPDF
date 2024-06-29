@@ -69,7 +69,7 @@ qint64 XPDF::getFileFormatSize(PDSTRUCT *pPdStruct)
     qint64 nOffset = 0;
 
     while (true) {
-        qint64 nCurrent = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // TODO PDStruct
+        qint64 nCurrent = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);
 
         if (nCurrent != -1) {
             OS_STRING osStartXref = _readPDFString(nCurrent);
