@@ -354,8 +354,18 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
             result.nSize++;
         }
 
-        if ((sSymbol == "") || (sSymbol == "\r") || (sSymbol == "\n"))  // TODO more checks
+        if ((sSymbol == "") || (sSymbol == "\n"))  // TODO more checks
         {
+            break;
+        }
+
+        if (sSymbol == "\r") {
+            QString _sSymbol = read_ansiString(nOffset + i + 1, 1);
+
+            if (_sSymbol == "\n") {
+                result.nSize++;
+            }
+
             break;
         }
 
