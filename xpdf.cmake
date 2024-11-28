@@ -1,9 +1,12 @@
 include_directories(${CMAKE_CURRENT_LIST_DIR})
 
-include(${CMAKE_CURRENT_LIST_DIR}/../Formats/xbinary.cmake)
+if (NOT DEFINED XBINARY_SOURCES)
+    include(${CMAKE_CURRENT_LIST_DIR}/../Formats/xbinary.cmake)
+    set(XPDF_SOURCES ${XPDF_SOURCES} ${XBINARY_SOURCES})
+endif()
 
 set(XPDF_SOURCES
-    ${XBINARY_SOURCES}
+    ${XPDF_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/xpdf.cpp
     ${CMAKE_CURRENT_LIST_DIR}/xpdf.h
     ${CMAKE_CURRENT_LIST_DIR}/xpdf_def.h
