@@ -229,6 +229,19 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         result.listRecords.append(record);
     }
 
+    if ((startxref.nFooterOffset + startxref.nFooterSize) < result.nBinarySize) {
+        _MEMORY_RECORD record = {};
+
+        record.nIndex = nIndex++;
+        record.type = MMT_OVERLAY;
+        record.nOffset = startxref.nFooterOffset + startxref.nFooterSize;
+        record.nSize = result.nBinarySize - (startxref.nFooterOffset + startxref.nFooterSize);
+        record.nAddress = -1;
+        record.sName = tr("Overlay");
+
+        result.listRecords.append(record);
+    }
+
     return result;
 }
 
