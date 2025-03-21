@@ -46,7 +46,6 @@ public:
     virtual FT getFileType();
     virtual ENDIAN getEndian();
     virtual qint64 getFileFormatSize(PDSTRUCT *pPdStruct);
-    virtual QString getFileFormatString();
     virtual QString getFileFormatExt();
 
     static QList<MAPMODE> getMapModesList();
