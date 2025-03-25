@@ -108,6 +108,14 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
+XBinary::OS_STRING XPDF::_readPDFStringX(qint64 nOffset, qint64 nSize)
+{
+    XBinary::OS_STRING result = {};
+
+
+    return result;
+}
+
 QList<XBinary::MAPMODE> XPDF::getMapModesList()
 {
     QList<MAPMODE> listResult;

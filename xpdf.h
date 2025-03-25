@@ -54,6 +54,7 @@ public:
     STARTHREF findStartxref(PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
     OS_STRING _readPDFString(qint64 nOffset);
+    OS_STRING _readPDFStringX(qint64 nOffset, qint64 nSize);
     OS_STRING readPDFValue(qint64 nOffset);
     void getInfo();
     qint64 getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct);
