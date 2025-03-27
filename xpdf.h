@@ -51,7 +51,7 @@ public:
     static QList<MAPMODE> getMapModesList();
     virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr);
 
-    STARTHREF findStartxref(PDSTRUCT *pPdStruct);
+    QList<STARTHREF> findStartxref(qint64 nOffset, PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
     OS_STRING _readPDFString(qint64 nOffset);
     OS_STRING _readPDFStringX(qint64 nOffset, qint64 nSize);

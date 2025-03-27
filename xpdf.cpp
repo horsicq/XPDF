@@ -190,106 +190,114 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         result.listRecords.append(record);
     }
 
-    STARTHREF startxref = findStartxref(pPdStruct);
+    QList<STARTHREF> listStrartHrefs = findStartxref(0, pPdStruct);
 
-    OS_STRING osHref = _readPDFStringX(startxref.nXrefOffset, 20);
+    qint32 nNumberOfFrefs = listStrartHrefs.count();
 
+    if(nNumberOfFrefs)
     {
-        _MEMORY_RECORD record = {};
+        for(int i=0;i<nNumberOfFrefs;i++)
+        {
+            STARTHREF startxref = listStrartHrefs.at(i);
 
-        record.nIndex = nIndex++;
-        record.type = MMT_DATA;
-        record.nOffset = startxref.nXrefOffset;
-        record.nSize = osHref.nSize;
-        record.nAddress = -1;
+            OS_STRING osHref = _readPDFStringX(startxref.nXrefOffset, 20);
 
-        result.listRecords.append(record);
-    }
+            {
+                _MEMORY_RECORD record = {};
 
-    if (osHref.sString == "xref") {
-        qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
+                record.nIndex = nIndex++;
+                record.type = MMT_DATA;
+                record.nOffset = startxref.nXrefOffset;
+                record.nSize = osHref.nSize;
+                record.nAddress = -1;
 
-        while (!pPdStruct->bIsStop) {
-            OS_STRING osSection = _readPDFStringX(nCurrentOffset, 20);
+                result.listRecords.append(record);
+            }
 
-            quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
-            quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
+            if (osHref.sString == "xref") {
+                qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
 
-            nCurrentOffset += osSection.nSize;
+                while (!pPdStruct->bIsStop) {
+                    OS_STRING osSection = _readPDFStringX(nCurrentOffset, 20);
 
-            if (nNumberOfObjects) {
-                for (quint64 i = 0; i < nNumberOfObjects; i++) {
-                    OS_STRING osObject = _readPDFStringX(nCurrentOffset, 20);
+                    quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
+                    quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
 
-                    if (i > 0) {
-                        qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
+                    nCurrentOffset += osSection.nSize;
 
-                        {
-                            _MEMORY_RECORD record = {};
+                    if (nNumberOfObjects) {
+                        for (quint64 i = 0; i < nNumberOfObjects; i++) {
+                            OS_STRING osObject = _readPDFStringX(nCurrentOffset, 20);
 
-                            record.nIndex = nIndex++;
-                            record.type = MMT_OBJECT;
-                            record.nOffset = nObjectOffset;
-                            record.nSize = getObjectSize(nObjectOffset, pPdStruct);
-                            record.nAddress = -1;
-                            record.nID = nID + i;
-                            record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+                            if (i > 0) {
+                                qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
-                            result.listRecords.append(record);
+                                {
+                                    _MEMORY_RECORD record = {};
+
+                                    record.nIndex = nIndex++;
+                                    record.type = MMT_OBJECT;
+                                    record.nOffset = nObjectOffset;
+                                    record.nSize = getObjectSize(nObjectOffset, pPdStruct);
+                                    record.nAddress = -1;
+                                    record.nID = nID + i;
+                                    record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+
+                                    result.listRecords.append(record);
+                                }
+                            }
+
+                            nCurrentOffset += osObject.nSize;
                         }
+                    } else {
+                        break;
                     }
-
-                    nCurrentOffset += osObject.nSize;
                 }
-            } else {
-                break;
+            }
+
+            {
+                _MEMORY_RECORD record = {};
+
+                record.nIndex = nIndex++;
+                record.type = MMT_FOOTER;
+                record.nOffset = startxref.nFooterOffset;
+                record.nSize = startxref.nFooterSize;
+                record.nAddress = -1;
+                record.sName = tr("Footer");
+
+                result.listRecords.append(record);
             }
         }
-    }
 
-    {
-        _MEMORY_RECORD record = {};
+        qint64 nMaxOffset = listStrartHrefs.at(nNumberOfFrefs - 1).nFooterOffset + listStrartHrefs.at(nNumberOfFrefs - 1).nFooterSize;
 
-        record.nIndex = nIndex++;
-        record.type = MMT_FOOTER;
-        record.nOffset = startxref.nFooterOffset;
-        record.nSize = startxref.nFooterSize;
-        record.nAddress = -1;
-        record.sName = tr("Footer");
+        if (nMaxOffset < result.nBinarySize) {
+            _MEMORY_RECORD record = {};
 
-        result.listRecords.append(record);
-    }
+            record.nIndex = nIndex++;
+            record.type = MMT_OVERLAY;
+            record.nOffset = nMaxOffset;
+            record.nSize = result.nBinarySize - nMaxOffset;
+            record.nAddress = -1;
+            record.sName = tr("Overlay");
 
-    if ((startxref.nFooterOffset + startxref.nFooterSize) < result.nBinarySize) {
-        _MEMORY_RECORD record = {};
-
-        record.nIndex = nIndex++;
-        record.type = MMT_OVERLAY;
-        record.nOffset = startxref.nFooterOffset + startxref.nFooterSize;
-        record.nSize = result.nBinarySize - (startxref.nFooterOffset + startxref.nFooterSize);
-        record.nAddress = -1;
-        record.sName = tr("Overlay");
-
-        result.listRecords.append(record);
+            result.listRecords.append(record);
+        }
     }
 
     return result;
 }
 
-XPDF::STARTHREF XPDF::findStartxref(PDSTRUCT *pPdStruct)
+QList<XPDF::STARTHREF> XPDF::findStartxref(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
+    QList<XPDF::STARTHREF> listResult;
+
     XBinary::PDSTRUCT pdStructEmpty = {};
 
     if (!pPdStruct) {
         pdStructEmpty = XBinary::createPdStruct();
         pPdStruct = &pdStructEmpty;
     }
-
-    STARTHREF result = {};
-
-    qint64 nSize = getSize();
-
-    qint64 nOffset = qMax((qint64)0, nSize - 0x1000);  // TODO const
 
     while (!(pPdStruct->bIsStop)) {
         qint64 nStartXref = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // \n \r
@@ -313,11 +321,19 @@ XPDF::STARTHREF XPDF::findStartxref(PDSTRUCT *pPdStruct)
                 if (osEnd.sString == "%%EOF") {
                     nCurrent += osEnd.nSize;
 
-                    result.nXrefOffset = _nOffset;
-                    result.nFooterOffset = nStartXref;
-                    result.nFooterSize = nCurrent - nStartXref;
+                    STARTHREF record = {};
 
-                    break;
+                    record.nXrefOffset = _nOffset;
+                    record.nFooterOffset = nStartXref;
+                    record.nFooterSize = nCurrent - nStartXref;
+
+                    listResult.append(record);
+
+                    OS_STRING osAppend = _readPDFStringX(nCurrent, 20);
+
+                    if (osAppend.sString.section(" ", 2, 2) != "obj") {
+                        break; // No append
+                    }
                 }
             }
         } else {
@@ -327,7 +343,7 @@ XPDF::STARTHREF XPDF::findStartxref(PDSTRUCT *pPdStruct)
         nOffset = nStartXref + 10;  // Get the last
     }
 
-    return result;
+    return listResult;
 }
 
 QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
