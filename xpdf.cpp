@@ -194,10 +194,8 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 
     qint32 nNumberOfFrefs = listStrartHrefs.count();
 
-    if(nNumberOfFrefs)
-    {
-        for(int i=0;i<nNumberOfFrefs;i++)
-        {
+    if (nNumberOfFrefs) {
+        for (int i = 0; i < nNumberOfFrefs; i++) {
             STARTHREF startxref = listStrartHrefs.at(i);
 
             OS_STRING osHref = _readPDFStringX(startxref.nXrefOffset, 20);
@@ -332,7 +330,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxref(qint64 nOffset, PDSTRUCT *pPdStruct)
                     OS_STRING osAppend = _readPDFStringX(nCurrent, 20);
 
                     if (osAppend.sString.section(" ", 2, 2) != "obj") {
-                        break; // No append
+                        break;  // No append
                     }
                 }
             }
