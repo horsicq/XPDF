@@ -195,30 +195,21 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     qint32 nNumberOfFrefs = listStrartHrefs.count();
 
     if (nNumberOfFrefs) {
-        for (int i = 0; i < nNumberOfFrefs; i++) {
-            STARTHREF startxref = listStrartHrefs.at(i);
+        for (int j = 0; j < nNumberOfFrefs; j++) {
+            STARTHREF startxref = listStrartHrefs.at(j);
 
             OS_STRING osHref = _readPDFStringX(startxref.nXrefOffset, 20);
 
-            {
-                _MEMORY_RECORD record = {};
-
-                record.nIndex = nIndex++;
-                record.type = MMT_DATA;
-                record.nOffset = startxref.nXrefOffset;
-                record.nSize = osHref.nSize;
-                record.nAddress = -1;
-
-                result.listRecords.append(record);
-            }
-
             if (osHref.sString == "xref") {
                 qint64 nCurrentOffset = startxref.nXrefOffset + osHref.nSize;
+                QList<qint64> listObjectOffsets;
+                quint64 nID = 0;
 
-                while (!pPdStruct->bIsStop) {
+                {
                     OS_STRING osSection = _readPDFStringX(nCurrentOffset, 20);
 
-                    quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
+                    nID = osSection.sString.section(" ", 0, 0).toULongLong();
+
                     quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
 
                     nCurrentOffset += osSection.nSize;
@@ -230,19 +221,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
                             if (i > 0) {
                                 qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
-                                {
-                                    _MEMORY_RECORD record = {};
-
-                                    record.nIndex = nIndex++;
-                                    record.type = MMT_OBJECT;
-                                    record.nOffset = nObjectOffset;
-                                    record.nSize = getObjectSize(nObjectOffset, pPdStruct);
-                                    record.nAddress = -1;
-                                    record.nID = nID + i;
-                                    record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
-
-                                    result.listRecords.append(record);
-                                }
+                                listObjectOffsets.append(nObjectOffset);
                             }
 
                             nCurrentOffset += osObject.nSize;
@@ -250,6 +229,47 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
                     } else {
                         break;
                     }
+                }
+                {
+                    qint32 nNumberOfObjects = listObjectOffsets.count();
+
+                    for (qint32 i = 0; i < nNumberOfObjects; i++) {
+
+                        _MEMORY_RECORD record = {};
+
+                        record.nIndex = nIndex++;
+                        record.type = MMT_OBJECT;
+                        record.nOffset = listObjectOffsets.at(i);
+
+                        if (i == (nNumberOfObjects - 1)) {
+                            record.nSize = startxref.nXrefOffset - record.nOffset;
+                        } else {
+                            record.nSize = listObjectOffsets.at(i + 1) - record.nOffset;
+                        }
+
+                        record.nAddress = -1;
+                        record.nID = nID + i + 1;
+                        record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+
+                        result.listRecords.append(record);
+                    }
+                }
+
+                {
+                    _MEMORY_RECORD record = {};
+
+                    record.nIndex = nIndex++;
+                    record.type = MMT_DATA;
+                    record.nOffset = startxref.nXrefOffset;
+                    record.nSize = nCurrentOffset - startxref.nXrefOffset;
+                    record.nAddress = -1;
+                    record.sName = QString("xref");
+
+                    result.listRecords.append(record);
+                }
+
+                if (startxref.nFooterOffset - nCurrentOffset > 0) {
+                    // Trailer
                 }
             }
 
