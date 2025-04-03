@@ -234,7 +234,6 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
                     qint32 nNumberOfObjects = listObjectOffsets.count();
 
                     for (qint32 i = 0; i < nNumberOfObjects; i++) {
-
                         _MEMORY_RECORD record = {};
 
                         record.nIndex = nIndex++;
@@ -497,7 +496,6 @@ XBinary::OS_STRING XPDF::readPDFValue(qint64 nOffset)
 
 void XPDF::getInfo()
 {
-
 }
 
 qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
