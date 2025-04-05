@@ -63,41 +63,33 @@ XBinary::ENDIAN XPDF::getEndian()
 
 qint64 XPDF::getFileFormatSize(PDSTRUCT *pPdStruct)
 {
-    // TODO Check if 2 PDFs or PDF in PDF
-    // TODO Check edited PDF
     qint64 nResult = 0;
     qint64 nOffset = 0;
 
     while (true) {
         qint64 nCurrent = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);
 
-        if (nCurrent != -1) {
-            OS_STRING osStartXref = _readPDFStringX(nCurrent, 20);
-
-            nCurrent += osStartXref.nSize;
-
-            OS_STRING osOffset = _readPDFStringX(nCurrent, 20);
-
-            qint64 _nOffset = osOffset.sString.toLongLong();
-
-            if ((_nOffset > 0) && (_nOffset < nCurrent)) {
-                nCurrent += osOffset.nSize;
-
-                OS_STRING osEnd = _readPDFStringX(nCurrent, 20);
-
-                if (osEnd.sString == "%%EOF") {
-                    nCurrent += osEnd.nSize;
-                    nResult = nCurrent;
-
-                    break;
-                }
-            }
-        } else {
-            nResult = 0;
-            break;
+        if (nCurrent == -1) {
+            break; // Exit if no more 'startxref' is found
         }
 
-        nOffset = nCurrent + 10;
+        OS_STRING osStartXref = _readPDFStringX(nCurrent, 20);
+        nCurrent += osStartXref.nSize;
+
+        OS_STRING osOffset = _readPDFStringX(nCurrent, 20);
+        qint64 _nOffset = osOffset.sString.toLongLong();
+
+        if (_nOffset > 0 && _nOffset < nCurrent) {
+            nCurrent += osOffset.nSize;
+
+            OS_STRING osEnd = _readPDFStringX(nCurrent, 20);
+            if (osEnd.sString == "%%EOF") {
+                nResult = nCurrent + osEnd.nSize;
+                break; // Valid PDF structure found, exit loop
+            }
+        }
+
+        nOffset = nCurrent + 10; // Move to the next potential 'startxref'
     }
 
     return nResult;
