@@ -70,7 +70,7 @@ qint64 XPDF::getFileFormatSize(PDSTRUCT *pPdStruct)
         qint64 nCurrent = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);
 
         if (nCurrent == -1) {
-            break; // Exit if no more 'startxref' is found
+            break;  // Exit if no more 'startxref' is found
         }
 
         OS_STRING osStartXref = _readPDFStringX(nCurrent, 20);
@@ -85,11 +85,11 @@ qint64 XPDF::getFileFormatSize(PDSTRUCT *pPdStruct)
             OS_STRING osEnd = _readPDFStringX(nCurrent, 20);
             if (osEnd.sString == "%%EOF") {
                 nResult = nCurrent + osEnd.nSize;
-                break; // Valid PDF structure found, exit loop
+                break;  // Valid PDF structure found, exit loop
             }
         }
 
-        nOffset = nCurrent + 10; // Move to the next potential 'startxref'
+        nOffset = nCurrent + 10;  // Move to the next potential 'startxref'
     }
 
     return nResult;
