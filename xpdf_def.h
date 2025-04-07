@@ -24,11 +24,11 @@
 #include <QtGlobal>
 
 namespace XPDF_DEF {
-struct OBJECT {
-    quint64 nID;
-    qint64 nOffset;
-    qint64 nSize;
-    bool bIsFree;
-};
+// struct OBJECT {
+//     quint64 nID;
+//     qint64 nOffset;
+//     qint64 nSize;
+//     bool bIsFree;
+// };
 }  // namespace XPDF_DEF
 #endif  // XPDF_DEF_H

@@ -39,6 +39,12 @@ public:
         qint64 nFooterSize;
     };
 
+    struct OBJECT {
+        quint64 nID;
+        qint64 nOffset;
+        qint64 nSize;
+    };
+
     XPDF(QIODevice *pDevice);
 
     virtual bool isValid(PDSTRUCT *pPdStruct = nullptr);
@@ -51,11 +57,13 @@ public:
     static QList<MAPMODE> getMapModesList();
     virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr);
 
-    QList<STARTHREF> findStartxref(qint64 nOffset, PDSTRUCT *pPdStruct);
+    QList<STARTHREF> findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct);
+    QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
     OS_STRING _readPDFString(qint64 nOffset);
     OS_STRING _readPDFStringX(qint64 nOffset, qint64 nSize);
     OS_STRING readPDFValue(qint64 nOffset);
+    void skipPDFString(qint64 *pnOffset);
     void getInfo();
     qint64 getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct);
 };
