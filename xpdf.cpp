@@ -100,6 +100,19 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
+QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
+{
+    QList<XPDF::OBJECT> listResult;
+
+    // QList<qint64> listObjectOffsets;
+
+    // for(qint32 i = 1; XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+    //     nOffset = find_ansiString(nOffset, -1, "obj", pPdStruct);
+    // }
+
+    return listResult;
+}
+
 void XPDF::skipPDFString(qint64 *pnOffset)
 {
     OS_STRING osString = _readPDFStringX(*pnOffset, 20);
@@ -305,6 +318,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         nMaxOffset = listStrartHrefs.at(nNumberOfFrefs - 1).nFooterOffset + listStrartHrefs.at(nNumberOfFrefs - 1).nFooterSize;
     } else {
         // File damaged;
+        QList<OBJECT> listObject = findObjects(pPdStruct);
     }
 
     if (nMaxOffset < result.nBinarySize) {

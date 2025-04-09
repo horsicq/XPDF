@@ -59,6 +59,7 @@ public:
 
     QList<STARTHREF> findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct);
     QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
+    QList<OBJECT> findObjects(PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
     OS_STRING _readPDFString(qint64 nOffset);
     OS_STRING _readPDFStringX(qint64 nOffset, qint64 nSize);
