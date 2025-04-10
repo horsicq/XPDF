@@ -78,6 +78,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
     qint64 nCurrentOffset = 0;
 
     XPDF::OBJECT record = {};
+    QString sLength;
 
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
         OS_STRING osString = _readPDFStringX(nCurrentOffset, 100);
@@ -89,6 +90,8 @@ QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
         } else if (osString.sString == "endobj") {
             record.nSize = (nCurrentOffset + osString.nSize) - record.nOffset;
             listResult.append(record);
+        } else if (false) {
+
         }
 
         nCurrentOffset += osString.nSize;
@@ -275,29 +278,32 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 
     qint32 nIndex = 0;
     qint64 nMaxOffset = 0;
-
-    {
-        OS_STRING osHeader = _readPDFStringX(0, 20);
-
-        _MEMORY_RECORD record = {};
-
-        record.nIndex = nIndex++;
-        record.type = MMT_HEADER;
-        record.nOffset = 0;
-        record.nSize = osHeader.nSize + 1;
-        record.nAddress = -1;
-        record.sName = tr("Header");
-
-        result.listRecords.append(record);
-
-        nMaxOffset = record.nSize;
-    }
+    bool bValid = false;
 
     QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
 
     qint32 nNumberOfFrefs = listStrartHrefs.count();
 
     if (nNumberOfFrefs) {
+        bValid = true;
+
+        {
+            OS_STRING osHeader = _readPDFStringX(0, 20);
+
+            _MEMORY_RECORD record = {};
+
+            record.nIndex = nIndex++;
+            record.type = MMT_HEADER;
+            record.nOffset = 0;
+            record.nSize = osHeader.nSize + 1;
+            record.nAddress = -1;
+            record.sName = tr("Header");
+
+            result.listRecords.append(record);
+
+            nMaxOffset = record.nSize;
+        }
+
         for (int j = 0; j < nNumberOfFrefs; j++) {
             STARTHREF startxref = listStrartHrefs.at(j);
 
@@ -357,6 +363,27 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 
         qint32 nNumberOfObjects = listObject.count();
 
+        if (nNumberOfObjects) {
+            bValid = true;
+
+            {
+                OS_STRING osHeader = _readPDFStringX(0, 20);
+
+                _MEMORY_RECORD record = {};
+
+                record.nIndex = nIndex++;
+                record.type = MMT_HEADER;
+                record.nOffset = 0;
+                record.nSize = osHeader.nSize + 1;
+                record.nAddress = -1;
+                record.sName = tr("Header");
+
+                result.listRecords.append(record);
+
+                nMaxOffset = record.nSize;
+            }
+        }
+
         for (qint32 i = 0; i < nNumberOfObjects; i++) {
             _MEMORY_RECORD record = {};
 
@@ -374,17 +401,19 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         }
     }
 
-    if (nMaxOffset < result.nBinarySize) {
-        _MEMORY_RECORD record = {};
+    if (bValid) {
+        if (nMaxOffset < result.nBinarySize) {
+            _MEMORY_RECORD record = {};
 
-        record.nIndex = nIndex++;
-        record.type = MMT_OVERLAY;
-        record.nOffset = nMaxOffset;
-        record.nSize = result.nBinarySize - nMaxOffset;
-        record.nAddress = -1;
-        record.sName = tr("Overlay");
+            record.nIndex = nIndex++;
+            record.type = MMT_OVERLAY;
+            record.nOffset = nMaxOffset;
+            record.nSize = result.nBinarySize - nMaxOffset;
+            record.nAddress = -1;
+            record.sName = tr("Overlay");
 
-        result.listRecords.append(record);
+            result.listRecords.append(record);
+        }
     }
 
     return result;
@@ -604,4 +633,14 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
     }
 
     return _nOffset - nOffset;
+}
+
+QString XPDF::_getRecordName(const QString &sString)
+{
+
+}
+
+QString XPDF::_getRecordValue(const QString &sString)
+{
+
 }

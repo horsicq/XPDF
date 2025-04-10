@@ -67,6 +67,8 @@ public:
     void skipPDFString(qint64 *pnOffset);
     void getInfo();
     qint64 getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct);
+    QString _getRecordName(const QString &sString);
+    QString _getRecordValue(const QString &sString);
 };
 
 #endif  // XPDF_H
