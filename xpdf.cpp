@@ -91,7 +91,6 @@ QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
             record.nSize = (nCurrentOffset + osString.nSize) - record.nOffset;
             listResult.append(record);
         } else if (false) {
-
         }
 
         nCurrentOffset += osString.nSize;
@@ -637,10 +636,14 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
 
 QString XPDF::_getRecordName(const QString &sString)
 {
+    QString sResult;
 
+    return sResult;
 }
 
 QString XPDF::_getRecordValue(const QString &sString)
 {
+    QString sResult;
 
+    return sResult;
 }
