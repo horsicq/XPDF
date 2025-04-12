@@ -46,7 +46,7 @@ QString XPDF::getVersion()
 {
     QString sResult;
 
-    sResult = _readPDFStringX(5, 5).sString;
+    sResult = _readPDFString(5, 5).sString;
 
     return sResult;
 }
@@ -77,41 +77,32 @@ QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
 
     qint64 nCurrentOffset = 0;
 
-    XPDF::OBJECT record = {};
-    QString sLength;
-
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-        OS_STRING osString = _readPDFStringX(nCurrentOffset, 100);
+        OS_STRING osString = _readPDFString(nCurrentOffset, 100);
 
-        if (osString.sString.section(" ", 2, 2) == "obj") {
+        if (_isObject(osString.sString)) {
+            qint64 nObjectSize = getObjectSize(nCurrentOffset, pPdStruct);
+
+            XPDF::OBJECT record = {};
+
             record.nOffset = nCurrentOffset;
-            record.nSize = 0;
-            record.nID = osString.sString.section(" ", 0, 0).toULongLong();
-        } else if (osString.sString == "endobj") {
-            record.nSize = (nCurrentOffset + osString.nSize) - record.nOffset;
+            record.nSize = nObjectSize;
+            record.nID = getObjectID(osString.sString);
+
             listResult.append(record);
-        } else if (false) {
-        }
-
-        nCurrentOffset += osString.nSize;
-
-        if (osString.nSize == 0) {
+        } else if (_isComment(osString.sString)) {
+            nCurrentOffset += osString.nSize;
+        } else {
             break;
         }
     }
-
-    // QList<qint64> listObjectOffsets;
-
-    // for(qint32 i = 1; XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-    //     nOffset = find_ansiString(nOffset, -1, "obj", pPdStruct);
-    // }
 
     return listResult;
 }
 
 void XPDF::skipPDFString(qint64 *pnOffset)
 {
-    OS_STRING osString = _readPDFStringX(*pnOffset, 20);
+    OS_STRING osString = _readPDFString(*pnOffset, 20);
     *pnOffset += osString.nSize;
 }
 
@@ -126,7 +117,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
     QList<qint64> listObjectOffsets;
     quint64 nID = 0;
 
-    OS_STRING osSection = _readPDFStringX(nCurrentOffset, 20);
+    OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
 
     // nID = osSection.sString.section(" ", 0, 0).toULongLong();
 
@@ -136,7 +127,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
     if (nNumberOfObjects) {
         for (quint64 i = 0; i < nNumberOfObjects; i++) {
-            OS_STRING osObject = _readPDFStringX(nCurrentOffset, 20);
+            OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
 
             if (i > 0) {
                 qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
@@ -154,14 +145,8 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
         OBJECT record = {};
 
         record.nOffset = listObjectOffsets.at(i);
-
-        if (i == (nNumberOfOffsets - 1)) {
-            record.nSize = pStartxref->nXrefOffset - record.nOffset;
-        } else {
-            record.nSize = listObjectOffsets.at(i + 1) - record.nOffset;
-        }
-
-        record.nID = _readPDFStringX(record.nOffset, 20).sString.section(" ", 0, 0).toULongLong();
+        record.nSize = getObjectSize(record.nOffset, pPdStruct);
+        record.nID = getObjectID(_readPDFString(record.nOffset, 20).sString);
 
         listResult.append(record);
     }
@@ -169,7 +154,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
     return listResult;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringX(qint64 nOffset, qint64 nSize)
+XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize)
 {
     XBinary::OS_STRING result = {};
 
@@ -287,14 +272,14 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         bValid = true;
 
         {
-            OS_STRING osHeader = _readPDFStringX(0, 20);
+            OS_STRING osHeader = _readPDFString(0, 20);
 
             _MEMORY_RECORD record = {};
 
             record.nIndex = nIndex++;
             record.type = MMT_HEADER;
             record.nOffset = 0;
-            record.nSize = osHeader.nSize + 1;
+            record.nSize = osHeader.nSize;
             record.nAddress = -1;
             record.sName = tr("Header");
 
@@ -366,14 +351,14 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
             bValid = true;
 
             {
-                OS_STRING osHeader = _readPDFStringX(0, 20);
+                OS_STRING osHeader = _readPDFString(0, 20);
 
                 _MEMORY_RECORD record = {};
 
                 record.nIndex = nIndex++;
                 record.type = MMT_HEADER;
                 record.nOffset = 0;
-                record.nSize = osHeader.nSize + 1;
+                record.nSize = osHeader.nSize;
                 record.nAddress = -1;
                 record.sName = tr("Header");
 
@@ -435,20 +420,20 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
         if (nStartXref != -1) {
             qint64 nCurrent = nStartXref;
 
-            OS_STRING osStartXref = _readPDFStringX(nCurrent, 20);
+            OS_STRING osStartXref = _readPDFString(nCurrent, 20);
 
             nCurrent += osStartXref.nSize;
 
-            OS_STRING osOffset = _readPDFStringX(nCurrent, 20);
+            OS_STRING osOffset = _readPDFString(nCurrent, 20);
 
             qint64 _nOffset = osOffset.sString.toLongLong();
 
-            OS_STRING osHref = _readPDFStringX(_nOffset, 20);
+            OS_STRING osHref = _readPDFString(_nOffset, 20);
 
             if ((osHref.sString == "xref") && (_nOffset < nCurrent)) {
                 nCurrent += osOffset.nSize;
 
-                OS_STRING osEnd = _readPDFStringX(nCurrent, 20);
+                OS_STRING osEnd = _readPDFString(nCurrent, 20);
 
                 if (osEnd.sString == "%%EOF") {
                     nCurrent += osEnd.nSize;
@@ -461,9 +446,9 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
                     listResult.append(record);
 
-                    OS_STRING osAppend = _readPDFStringX(nCurrent, 20);
+                    OS_STRING osAppend = _readPDFString(nCurrent, 20);
 
-                    if (osAppend.sString.section(" ", 2, 2) != "obj") {
+                    if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString))){
                         break;  // No append
                     }
                 }
@@ -511,7 +496,7 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
         bool bValid = false;
 
         while (true) {
-            OS_STRING osString = _readPDFStringX(nOffset, 20);
+            OS_STRING osString = _readPDFString(nOffset, 20);
 
             if (osString.sString == "<<") {
                 bValid = true;
@@ -533,49 +518,6 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
     }
 
     return listResult;
-}
-
-XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset)
-{
-    OS_STRING result = {};
-
-    result.nOffset = nOffset;
-
-    // TODO optimize
-    for (qint32 i = 0; i < 65535; i++) {
-        QString sSymbol = read_ansiString(nOffset + i, 1);
-
-        if (sSymbol != "") {
-            result.nSize++;
-        }
-
-        if ((sSymbol == "") || (sSymbol == "\n"))  // TODO more checks
-        {
-            break;
-        }
-
-        if (sSymbol == "\r") {
-            QString _sSymbol = read_ansiString(nOffset + i + 1, 1);
-
-            if (_sSymbol == "\n") {
-                result.nSize++;
-            }
-
-            break;
-        }
-
-        result.sString.append(sSymbol);
-
-        if (sSymbol == "(") {
-            OS_STRING _unicode = readPDFValue(nOffset + i + 1);
-
-            result.sString.append(_unicode.sString);
-            i += _unicode.nSize;
-            result.nSize += _unicode.nSize;
-        }
-    }
-
-    return result;
 }
 
 XBinary::OS_STRING XPDF::readPDFValue(qint64 nOffset)
@@ -619,7 +561,7 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
 
     while (!(pPdStruct->bIsStop)) {
         // TODO Read Object
-        OS_STRING osString = _readPDFStringX(_nOffset, 60);
+        OS_STRING osString = _readPDFString(_nOffset, 60);
         _nOffset += osString.nSize;
 
         if (osString.sString == "") {
@@ -646,4 +588,38 @@ QString XPDF::_getRecordValue(const QString &sString)
     QString sResult;
 
     return sResult;
+}
+
+bool XPDF::_isObject(const QString &sString)
+{
+    return (sString.section(" ", 2, 2) == "obj");
+}
+
+bool XPDF::_isComment(const QString &sString)
+{
+    bool bResult = false;
+
+    if (sString.size() > 0) {
+        bResult = (sString.at(0) == QChar('%'));
+    }
+
+    return bResult;
+}
+
+QString XPDF::_getCommentString(const QString &sString)
+{
+    QString sResult;
+
+    if (sString.size() > 0) {
+        if (sString.at(0) == QChar('%')) {
+            sResult = sString.section("%", 1, -1);
+        }
+    }
+
+    return sResult;
+}
+
+qint32 XPDF::getObjectID(const QString &sString)
+{
+    return sString.section(" ", 0, 0).toInt();
 }

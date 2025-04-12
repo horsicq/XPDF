@@ -61,14 +61,17 @@ public:
     QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
     QList<OBJECT> findObjects(PDSTRUCT *pPdStruct);
     QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
-    OS_STRING _readPDFString(qint64 nOffset);
-    OS_STRING _readPDFStringX(qint64 nOffset, qint64 nSize);
+    OS_STRING _readPDFString(qint64 nOffset, qint64 nSize);
     OS_STRING readPDFValue(qint64 nOffset);
     void skipPDFString(qint64 *pnOffset);
     void getInfo();
     qint64 getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct);
     QString _getRecordName(const QString &sString);
     QString _getRecordValue(const QString &sString);
+    bool _isObject(const QString &sString);
+    bool _isComment(const QString &sString);
+    QString _getCommentString(const QString &sString);
+    qint32 getObjectID(const QString &sString);
 };
 
 #endif  // XPDF_H
