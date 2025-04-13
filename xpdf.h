@@ -69,6 +69,7 @@ public:
     QString _getRecordName(const QString &sString);
     QString _getRecordValue(const QString &sString);
     bool _isObject(const QString &sString);
+    bool _isEndObject(const QString &sString);
     bool _isComment(const QString &sString);
     QString _getCommentString(const QString &sString);
     qint32 getObjectID(const QString &sString);

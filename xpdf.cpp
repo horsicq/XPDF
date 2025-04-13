@@ -559,16 +559,20 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     qint64 _nOffset = nOffset;
 
+    QString sLength;
+
     while (!(pPdStruct->bIsStop)) {
         // TODO Read Object
         OS_STRING osString = _readPDFString(_nOffset, 60);
         _nOffset += osString.nSize;
 
-        if (osString.sString == "") {
+        if (_getRecordName(osString.sString) == "Length") {
+            sLength = _getRecordValue(osString.sString);
+        } else if (osString.sString == "stream") {
+            break; // TODO
+        } else if (_isEndObject(osString.sString)) {
             break;
-        }
-        // TODO XXX XXX "obj"
-        if ((osString.sString == "endobj")) {
+        } else if (osString.sString == "") {
             break;
         }
     }
@@ -580,6 +584,12 @@ QString XPDF::_getRecordName(const QString &sString)
 {
     QString sResult;
 
+    if (sString.size() > 0) {
+        if (sString.at(0) == QChar('/')) {
+            sResult = sString.section("/", 1, -1).section(" ", 0, 0);
+        }
+    }
+
     return sResult;
 }
 
@@ -587,12 +597,23 @@ QString XPDF::_getRecordValue(const QString &sString)
 {
     QString sResult;
 
+    if (sString.size() > 0) {
+        if (sString.at(0) == QChar('/')) {
+            sResult = sString.section("/", 1, -1).section(" ", 1, -1);
+        }
+    }
+
     return sResult;
 }
 
 bool XPDF::_isObject(const QString &sString)
 {
     return (sString.section(" ", 2, 2) == "obj");
+}
+
+bool XPDF::_isEndObject(const QString &sString)
+{
+    return (sString == "endobj");
 }
 
 bool XPDF::_isComment(const QString &sString)
