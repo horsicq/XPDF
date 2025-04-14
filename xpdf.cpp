@@ -154,7 +154,6 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
     skipPDFString(&nCurrentOffset);
 
     QList<qint64> listObjectOffsets;
-    quint64 nID = 0;
 
     OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
 
@@ -285,8 +284,14 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset)
     for (qint64 i = 0; i < nSize; i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
-        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>') || (nChar == ' ')) {
+        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>') || (nChar == ' ') || (nChar == '(')) {
             break;
+        }
+
+        if (i > 0) {
+            if (nChar == '/') {
+                break;
+            }
         }
 
         result.nSize++;
