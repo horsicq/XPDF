@@ -165,7 +165,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
     nCurrentOffset += osSection.nSize;
 
     if (nNumberOfObjects) {
-        for (quint64 i = 0; i < nNumberOfObjects; i++) {
+        for (quint64 i = 0; i <= (nNumberOfObjects + 1); i++) {
             OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
 
             if (i > 0) {
@@ -731,6 +731,7 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
         } else if (osString.sString == "stream") {
             if (sLength.toInt()) {
                 _nOffset += sLength.toInt();
+                skipPDFEnding(&_nOffset);
             } else if (sLength.section(" ", 2, 2) == "R") {
                 QString sPattern = sLength.replace("R", "obj");
                 qint64 nObjectOffset = find_ansiString(nOffset, -1, sPattern, pPdStruct);
