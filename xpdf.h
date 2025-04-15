@@ -43,6 +43,7 @@ public:
         quint64 nID;
         qint64 nOffset;
         qint64 nSize;
+        QList<QString> listParts;
     };
 
     XPDF(QIODevice *pDevice);
@@ -69,12 +70,13 @@ public:
     qint32 skipPDFEnding(qint64 *pnOffset);
     qint32 skipPDFSpace(qint64 *pnOffset);
     qint32 skipPDFString(qint64 *pnOffset);
-    qint64 getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct);
+    OBJECT getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct);
     bool _isObject(const QString &sString);
     bool _isEndObject(const QString &sString);
     bool _isComment(const QString &sString);
     QString _getCommentString(const QString &sString);
     qint32 getObjectID(const QString &sString);
+    virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
 };
 
 #endif  // XPDF_H

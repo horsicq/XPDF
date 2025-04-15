@@ -81,17 +81,11 @@ QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
         OS_STRING osString = _readPDFString(nCurrentOffset, 100);
 
         if (_isObject(osString.sString)) {
-            qint64 nObjectSize = getObjectSize(nCurrentOffset, pPdStruct);
-
-            XPDF::OBJECT record = {};
-
-            record.nOffset = nCurrentOffset;
-            record.nSize = nObjectSize;
-            record.nID = getObjectID(osString.sString);
+            OBJECT record = getObject(nCurrentOffset, 0, pPdStruct);
 
             listResult.append(record);
 
-            nCurrentOffset += nObjectSize;
+            nCurrentOffset += record.nSize;
         } else if (_isComment(osString.sString)) {
             nCurrentOffset += osString.nSize;
         } else {
@@ -155,36 +149,40 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
     QList<qint64> listObjectOffsets;
 
-    OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
+    while (XBinary::isPdStructNotCanceled(pPdStruct)) {
+        OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
 
-    // nID = osSection.sString.section(" ", 0, 0).toULongLong();
+        if (osSection.sString != "") {
+            // nID = osSection.sString.section(" ", 0, 0).toULongLong();
 
-    quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
+            quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
 
-    nCurrentOffset += osSection.nSize;
+            nCurrentOffset += osSection.nSize;
 
-    if (nNumberOfObjects) {
-        for (quint64 i = 0; i <= (nNumberOfObjects + 1); i++) {
-            OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
+            if (nNumberOfObjects) {
+                for (quint64 i = 0; i < nNumberOfObjects; i++) {
+                    OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
 
-            if (i > 0) {
-                qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
+                    if (osObject.sString.section(" ", 2, 2) == "n") {
+                        qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
-                listObjectOffsets.append(nObjectOffset);
+                        listObjectOffsets.append(nObjectOffset);
+                    }
+
+                    nCurrentOffset += osObject.nSize;
+                }
+            } else {
+                break;
             }
-
-            nCurrentOffset += osObject.nSize;
+        } else {
+            break;
         }
     }
 
     qint32 nNumberOfOffsets = listObjectOffsets.count();
 
     for (qint32 i = 0; i < nNumberOfOffsets; i++) {
-        OBJECT record = {};
-
-        record.nOffset = listObjectOffsets.at(i);
-        record.nSize = getObjectSize(record.nOffset, pPdStruct);
-        record.nID = getObjectID(_readPDFString(record.nOffset, 20).sString);
+        OBJECT record = getObject(listObjectOffsets.at(i), 0, pPdStruct); // TODO ID from table
 
         listResult.append(record);
     }
@@ -312,6 +310,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset)
     bool bStart = false;
     bool bEnd = false;
     bool bUnicode = false;
+    bool bBSlash = false;
 
     for (qint64 i = 0; i < nSize; i++) {
         if (!bUnicode) {
@@ -330,20 +329,34 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset)
                         i += 2;
                     }
                 }
-            } else if (nChar == ')') {
+                result.sString.append('(');
+            } else if ((nChar == ')') && (!bBSlash)) {
+                result.sString.append(')');
                 bEnd = true;
+            } else if (nChar == '\\') {
+                bBSlash = true;
+            } else {
+                if (bBSlash) {
+                    bBSlash = false;
+                }
+                result.sString.append((char)nChar);
             }
-
             result.nSize++;
-            result.sString.append((char)nChar);
         } else if (nSize - i >= 2) {
             quint16 nChar = read_uint16(nOffset + i, true);
 
-            if ((nChar >> 8) == ')') {
+            if (((nChar >> 8) == ')') && (!bBSlash)) {
                 result.sString.append(')');
                 result.nSize++;
                 bEnd = true;
+            } else if (nChar == '\\') {
+                bBSlash = true;
+                i++;
+                result.nSize += 2;
             } else {
+                if (bBSlash) {
+                    bBSlash = false;
+                }
                 result.sString.append(QChar(nChar));
                 i++;
                 result.nSize += 2;
@@ -422,6 +435,9 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     XBinary::_MEMORY_MAP result = {};
 
     result.nBinarySize = getSize();
+    result.fileType = FT_PDF;
+    result.endian = ENDIAN_UNKNOWN;
+    result.mode = MODE_32;
 
     qint32 nIndex = 0;
     qint64 nMaxOffset = 0;
@@ -685,30 +701,38 @@ QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
     return listResult;
 }
 
-qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
+XPDF::OBJECT XPDF::getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct)
 {
-    qint64 _nOffset = nOffset;
+    OBJECT result = {};
+    result.nOffset = nOffset;
+    result.nID = nID;
 
     QString sLength;
     bool bLength = false;
 
     while (!(pPdStruct->bIsStop)) {
         // TODO Read Object
-        OS_STRING osString = _readPDFString(_nOffset, 20);
-#ifdef QT_DEBUG
-        qDebug(">%s", osString.sString.toUtf8().data());
-#endif
-        _nOffset += osString.nSize;
+        OS_STRING osString = _readPDFString(nOffset, 20);
+
+        if (result.nID == 0) {
+            result.nID = getObjectID(osString.sString);
+        }
+// #ifdef QT_DEBUG
+//         qDebug(">%s", osString.sString.toUtf8().data());
+// #endif
+        nOffset += osString.nSize;
 
         if (_isObject(osString.sString)) {
             qint32 nObj = 0;
             qint32 nCol = 0;
             while (!(pPdStruct->bIsStop)) {
-                OS_STRING osStringPart = _readPDFStringPart(_nOffset);
-#ifdef QT_DEBUG
-                qDebug("#%s", osStringPart.sString.toUtf8().data());
-#endif
-                _nOffset += osStringPart.nSize;
+                OS_STRING osStringPart = _readPDFStringPart(nOffset);
+
+                result.listParts.append(osStringPart.sString);
+// #ifdef QT_DEBUG
+//                 qDebug("#%s", osStringPart.sString.toUtf8().data());
+// #endif
+                nOffset += osStringPart.nSize;
 
                 if (osStringPart.sString == "") {
                     break;
@@ -735,8 +759,8 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
             }
         } else if (osString.sString == "stream") {
             if (sLength.toInt()) {
-                _nOffset += sLength.toInt();
-                skipPDFEnding(&_nOffset);
+                nOffset += sLength.toInt();
+                skipPDFEnding(&nOffset);
             } else if (sLength.section(" ", 2, 2) == "R") {
                 QString sPattern = sLength.replace("R", "obj");
                 qint64 nObjectOffset = find_ansiString(nOffset, -1, sPattern, pPdStruct);
@@ -746,8 +770,8 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
                     OS_STRING osLen = _readPDFStringPart_val(nObjectOffset);
 
                     if (osLen.sString.toInt()) {
-                        _nOffset += osLen.sString.toInt();
-                        skipPDFEnding(&_nOffset);
+                        nOffset += osLen.sString.toInt();
+                        skipPDFEnding(&nOffset);
                     } else {
                         break;
                     }
@@ -764,7 +788,9 @@ qint64 XPDF::getObjectSize(qint64 nOffset, PDSTRUCT *pPdStruct)
         }
     }
 
-    return _nOffset - nOffset;
+    result.nSize = nOffset - result.nOffset;
+
+    return result;
 }
 
 bool XPDF::_isObject(const QString &sString)
@@ -804,4 +830,34 @@ QString XPDF::_getCommentString(const QString &sString)
 qint32 XPDF::getObjectID(const QString &sString)
 {
     return sString.section(" ", 0, 0).toInt();
+}
+
+XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
+{
+    FILEFORMATINFO result = {};
+
+    result.bIsValid = isValid(pPdStruct);
+
+    if (result.bIsValid) {
+        _MEMORY_MAP memoryMap = getMemoryMap(MAPMODE_OBJECTS, pPdStruct);
+
+        result.nSize = _calculateRawSize(&memoryMap, pPdStruct);
+        result.fileType = memoryMap.fileType;
+        result.sExt = getFileFormatExt();
+        result.sVersion = getVersion();
+        result.sOptions = getOptions();
+        result.osName = getOsName();
+        result.sOsVersion = getOsVersion();
+        result.sArch = memoryMap.sArch;
+        result.mode = memoryMap.mode;
+        result.sType = memoryMap.sType;
+        result.endian = memoryMap.endian;
+        result.nNumberOfRecords = XBinary::getNumberOfMemoryMapTypeRecords(&memoryMap, MMT_OBJECT);
+
+        if (result.nSize == 0) {
+            result.bIsValid = false;
+        }
+    }
+
+    return result;
 }
