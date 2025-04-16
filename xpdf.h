@@ -67,16 +67,24 @@ public:
     OS_STRING _readPDFStringPart_const(qint64 nOffset);
     OS_STRING _readPDFStringPart_str(qint64 nOffset);
     OS_STRING _readPDFStringPart_val(qint64 nOffset);
+    OS_STRING _readPDFStringPart_hex(qint64 nOffset);
     qint32 skipPDFEnding(qint64 *pnOffset);
     qint32 skipPDFSpace(qint64 *pnOffset);
     qint32 skipPDFString(qint64 *pnOffset);
     OBJECT getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct);
-    bool _isObject(const QString &sString);
-    bool _isEndObject(const QString &sString);
-    bool _isComment(const QString &sString);
-    QString _getCommentString(const QString &sString);
-    qint32 getObjectID(const QString &sString);
+    static bool _isObject(const QString &sString);
+    static bool _isString(const QString &sString);
+    static bool _isDateTime(const QString &sString);
+    static bool _isEndObject(const QString &sString);
+    static bool _isComment(const QString &sString);
+    static QString _getCommentString(const QString &sString);
+    static QString _getString(const QString &sString);
+    static QDateTime _getDateTime(const QString &sString);
+    static qint32 getObjectID(const QString &sString);
     virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
+
+    QList<OBJECT> getObjects(PDSTRUCT *pPdStruct = nullptr);
+    static QList<QVariant> getValuesByKey(QList<OBJECT> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 };
 
 #endif  // XPDF_H

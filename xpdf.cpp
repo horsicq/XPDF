@@ -244,6 +244,8 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset)
                 if (read_uint8(nOffset + 1) == '<') {
                     result.sString = "<<";
                     result.nSize = 2;
+                } else {
+                    result = _readPDFStringPart_hex(nOffset);
                 }
             }
         } else if (nChar == '>') {
@@ -412,11 +414,38 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset) {
     return result;
 }
 
+XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset)
+{
+    XBinary::OS_STRING result = {};
+
+    result.nOffset = nOffset;
+
+    qint64 nSize = getSize() - nOffset;
+
+    for (qint64 i = 0; i < nSize; i++) {
+        quint8 nChar = read_uint8(nOffset + i);
+
+        if ((i == 0) && (nChar != QChar('<'))) {
+            break;
+        }
+
+        result.nSize++;
+        result.sString.append((char)nChar);
+
+        if (nChar == QChar('>')) {
+            break;
+        }
+    }
+
+    return result;
+}
+
+
 QList<XBinary::MAPMODE> XPDF::getMapModesList()
 {
     QList<MAPMODE> listResult;
 
-    listResult.append(MAPMODE_REGIONS);
+    listResult.append(MAPMODE_OBJECTS);
 
     return listResult;
 }
@@ -463,8 +492,6 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
             record.sName = tr("Header");
 
             result.listRecords.append(record);
-
-            nMaxOffset = record.nSize;
         }
 
         for (int j = 0; j < nNumberOfFrefs; j++) {
@@ -579,7 +606,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         }
     }
 
-    std::sort(result.listRecords.begin(), result.listRecords.end(), compareMemoryMapRecord);
+    // std::sort(result.listRecords.begin(), result.listRecords.end(), compareMemoryMapRecord);
 
     return result;
 }
@@ -710,7 +737,7 @@ XPDF::OBJECT XPDF::getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct)
     QString sLength;
     bool bLength = false;
 
-    while (!(pPdStruct->bIsStop)) {
+    while (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // TODO Read Object
         OS_STRING osString = _readPDFString(nOffset, 20);
 
@@ -725,7 +752,7 @@ XPDF::OBJECT XPDF::getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct)
         if (_isObject(osString.sString)) {
             qint32 nObj = 0;
             qint32 nCol = 0;
-            while (!(pPdStruct->bIsStop)) {
+            while (XBinary::isPdStructNotCanceled(pPdStruct)) {
                 OS_STRING osStringPart = _readPDFStringPart(nOffset);
 
                 result.listParts.append(osStringPart.sString);
@@ -798,6 +825,34 @@ bool XPDF::_isObject(const QString &sString)
     return (sString.section(" ", 2, 2) == "obj");
 }
 
+bool XPDF::_isString(const QString &sString)
+{
+    bool bResult = false;
+
+    qint32 nSize = sString.size();
+    if (nSize >= 2) {
+        if((sString.at(0) == QChar('(')) && (sString.at(nSize - 1) == QChar(')'))) {
+            bResult = true;
+        }
+    }
+
+    return bResult;
+}
+
+bool XPDF::_isDateTime(const QString &sString)
+{
+    bool bResult = false;
+
+    qint32 nSize = sString.size();
+    if (nSize >= 18) {
+        if((sString.mid(0, 3) == QString("(D:")) && (sString.at(nSize - 1) == QChar(')'))) {
+            bResult = true;
+        }
+    }
+
+    return bResult;
+}
+
 bool XPDF::_isEndObject(const QString &sString)
 {
     return (sString == "endobj");
@@ -827,9 +882,105 @@ QString XPDF::_getCommentString(const QString &sString)
     return sResult;
 }
 
+QString XPDF::_getString(const QString &sString)
+{
+    QString sResult;
+
+    qint32 nSize = sString.size();
+    if (nSize >= 2) {
+        sResult = sString.mid(1, nSize - 2);
+    }
+
+    return sResult;
+}
+
+QDateTime XPDF::_getDateTime(const QString &sString)
+{
+    QDateTime result;
+
+    QString sDate = sString.section(":", 1, -1);
+    sDate = sDate.section(")", 0, 0);
+    sDate.remove(QChar('\''));
+    sDate.replace(QChar('Z'), QChar('+'));
+    // sDate.resize(14, QChar('0'));
+
+    result = QDateTime::fromString(sDate, "yyyyMMddhhmmsstt");
+
+    return result;
+}
+
 qint32 XPDF::getObjectID(const QString &sString)
 {
     return sString.section(" ", 0, 0).toInt();
+}
+
+QList<QVariant> XPDF::getValuesByKey(QList<OBJECT> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct)
+{
+    QList<QVariant> listResult;
+    QSet<QString> stVars;
+
+    qint32 nNumberOfRecords = pListObjects->count();
+
+    for (qint32 i = 0; (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+        OBJECT record = pListObjects->at(i);
+
+        qint32 nNumberOfParts = record.listParts.count();
+
+        for (qint32 j = 0; (j < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
+            QString sPart = record.listParts.at(j);
+
+            if (sPart == sKey) {
+                if ((j + 1) < nNumberOfParts) {
+                    QString sValue = record.listParts.at(j + 1);
+                    QVariant varValue;
+
+                    if (sValue.toLongLong()) {
+                        varValue = sValue.toLongLong();
+                    } else if (_isDateTime(sValue)) {
+                        varValue = _getDateTime(sValue);
+                    } else if (_isString(sValue)) {
+                        QString sString = _getString(sValue);
+
+                        if (sString != "") {
+                            varValue = sString;
+                        }
+                    }
+
+                    if (!varValue.isNull()) {
+                        if (!stVars.contains(varValue.toString())) {
+                            listResult.append(varValue);
+                            stVars.insert(varValue.toString());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return listResult;
+}
+
+QList<XPDF::OBJECT> XPDF::getObjects(PDSTRUCT *pPdStruct)
+{
+    QList<OBJECT> listResult;
+
+    QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
+
+    qint32 nNumberOfFrefs = listStrartHrefs.count();
+
+    if (nNumberOfFrefs) {
+        for (int i = 0; i < nNumberOfFrefs; i++) {
+            STARTHREF startxref = listStrartHrefs.at(i);
+
+            QList<OBJECT> listObject = getObjectsFromStartxref(&startxref, pPdStruct);
+            listResult.append(listObject);
+        }
+    } else {
+        QList<OBJECT> listObject = findObjects(pPdStruct);
+        listResult.append(listObject);
+    }
+
+    return listResult;
 }
 
 XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
