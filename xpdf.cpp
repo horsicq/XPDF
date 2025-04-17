@@ -160,7 +160,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
             nCurrentOffset += osSection.nSize;
 
             if (nNumberOfObjects) {
-                for (quint64 i = 0; i < nNumberOfObjects; i++) {
+                for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
                     OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
 
                     if (osObject.sString.section(" ", 2, 2) == "n") {
@@ -181,7 +181,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
     qint32 nNumberOfOffsets = listObjectOffsets.count();
 
-    for (qint32 i = 0; i < nNumberOfOffsets; i++) {
+    for (qint32 i = 0; (i < nNumberOfOffsets) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         OBJECT record = getObject(listObjectOffsets.at(i), 0, pPdStruct); // TODO ID from table
 
         listResult.append(record);
@@ -419,7 +419,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset) {
     for (qint64 i = 0; i < nSize; i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
-        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>') || (nChar == '/')) {
+        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == '/')) {
             break;
         }
 
@@ -526,14 +526,14 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
             result.listRecords.append(record);
         }
 
-        for (int j = 0; j < nNumberOfFrefs; j++) {
+        for (int j = 0; (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
             STARTHREF startxref = listStrartHrefs.at(j);
 
             QList<OBJECT> listObject = getObjectsFromStartxref(&startxref, pPdStruct);
 
             qint32 nNumberOfObjects = listObject.count();
 
-            for (qint32 i = 0; i < nNumberOfObjects; i++) {
+            for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
                 _MEMORY_RECORD record = {};
 
                 record.nIndex = nIndex++;
@@ -606,7 +606,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
             }
         }
 
-        for (qint32 i = 0; i < nNumberOfObjects; i++) {
+        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             _MEMORY_RECORD record = {};
 
             record.nIndex = nIndex++;
@@ -1003,7 +1003,7 @@ QList<XPDF::OBJECT> XPDF::getObjects(PDSTRUCT *pPdStruct)
     qint32 nNumberOfFrefs = listStrartHrefs.count();
 
     if (nNumberOfFrefs) {
-        for (int i = 0; i < nNumberOfFrefs; i++) {
+        for (int i = 0; (i < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             STARTHREF startxref = listStrartHrefs.at(i);
 
             QList<OBJECT> listObject = getObjectsFromStartxref(&startxref, pPdStruct);
