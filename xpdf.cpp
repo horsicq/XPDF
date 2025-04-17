@@ -223,6 +223,38 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize)
     return result;
 }
 
+XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize)
+{
+    XBinary::OS_STRING result = {};
+
+    result.nOffset = nOffset;
+
+    if (nSize == -1) {
+        nSize = getSize() - nOffset;
+    }
+
+    if (nOffset + nSize > getSize()) {
+        nSize = getSize() - nOffset;
+    }
+
+    for (qint64 i = 0; i < nSize; i++) {
+        quint8 nChar = read_uint8(nOffset + i);
+
+        if ((nChar == 0) || (nChar == 13) || (nChar == 10) || (nChar == '<')) {
+            break;
+        }
+
+        result.nSize++;
+
+        result.sString.append((char)nChar);
+    }
+
+    nOffset += result.nSize;
+
+    result.nSize += skipPDFEnding(&nOffset);
+
+    return result;
+}
 
 XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset)
 {
@@ -284,7 +316,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset)
     for (qint64 i = 0; i < nSize; i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
-        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>') || (nChar == ' ') || (nChar == '(')) {
+        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == ' ') || (nChar == '(')) {
             break;
         }
 
@@ -387,7 +419,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset) {
     for (qint64 i = 0; i < nSize; i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
-        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>')) {
+        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == ']') || (nChar == '>') || (nChar == '/')) {
             break;
         }
 
@@ -739,7 +771,9 @@ XPDF::OBJECT XPDF::getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct)
 
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // TODO Read Object
-        OS_STRING osString = _readPDFString(nOffset, 20);
+        OS_STRING osString = _readPDFStringPart_title(nOffset, 20);
+
+        // qDebug("%llX", nOffset);
 
         if (result.nID == 0) {
             result.nID = getObjectID(osString.sString);
