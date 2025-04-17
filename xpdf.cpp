@@ -425,14 +425,14 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset)
     for (qint64 i = 0; i < nSize; i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
-        if ((i == 0) && (nChar != QChar('<'))) {
+        if ((i == 0) && (nChar != '<')) {
             break;
         }
 
         result.nSize++;
         result.sString.append((char)nChar);
 
-        if (nChar == QChar('>')) {
+        if (nChar == '>') {
             break;
         }
     }
