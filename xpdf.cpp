@@ -790,9 +790,9 @@ XPDF::OBJECT XPDF::getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct)
                 OS_STRING osStringPart = _readPDFStringPart(nOffset);
 
                 result.listParts.append(osStringPart.sString);
-// #ifdef QT_DEBUG
-//                 qDebug("#%s", osStringPart.sString.toUtf8().data());
-// #endif
+#ifdef QT_DEBUG
+                qDebug("#%s", osStringPart.sString.toUtf8().data());
+#endif
                 nOffset += osStringPart.nSize;
 
                 if (osStringPart.sString == "") {
@@ -889,7 +889,7 @@ bool XPDF::_isDateTime(const QString &sString)
 
 bool XPDF::_isEndObject(const QString &sString)
 {
-    return (sString == "endobj");
+    return (sString.trimmed() == "endobj");
 }
 
 bool XPDF::_isComment(const QString &sString)
