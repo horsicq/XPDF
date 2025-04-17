@@ -43,6 +43,12 @@ public:
         quint64 nID;
         qint64 nOffset;
         qint64 nSize;
+    };
+
+    struct OBJECT_EX {
+        quint64 nID;
+        qint64 nOffset;
+        qint64 nSize;
         QList<QString> listParts;
     };
 
@@ -72,7 +78,7 @@ public:
     qint32 skipPDFEnding(qint64 *pnOffset);
     qint32 skipPDFSpace(qint64 *pnOffset);
     qint32 skipPDFString(qint64 *pnOffset);
-    OBJECT getObject(qint64 nOffset, qint32 nID, PDSTRUCT *pPdStruct);
+    OBJECT_EX getObject(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
     static bool _isObject(const QString &sString);
     static bool _isString(const QString &sString);
     static bool _isDateTime(const QString &sString);
@@ -84,8 +90,8 @@ public:
     static qint32 getObjectID(const QString &sString);
     virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
 
-    QList<OBJECT> getObjects(PDSTRUCT *pPdStruct = nullptr);
-    static QList<QVariant> getValuesByKey(QList<OBJECT> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+    QList<OBJECT_EX> getObjects(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
+    static QList<QVariant> getValuesByKey(QList<OBJECT_EX> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 };
 
 #endif  // XPDF_H
