@@ -853,6 +853,7 @@ XPDF::OBJECT_EX XPDF::getObject(qint64 nOffset, qint32 nID, qint32 nPartLimit, P
 
                 if ((nPartCount < nPartLimit) || (nPartLimit == -1)) {
                     result.listParts.append(osStringPart.sString);
+                    nPartCount++;
                 } else {
                     bStop = true;
                     break;
