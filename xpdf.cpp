@@ -701,14 +701,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     QList<XPDF::STARTHREF> listResult;
 
-    XBinary::PDSTRUCT pdStructEmpty = {};
-
-    if (!pPdStruct) {
-        pdStructEmpty = XBinary::createPdStruct();
-        pPdStruct = &pdStructEmpty;
-    }
-
-    while (!(pPdStruct->bIsStop)) {
+    while (XBinary::isPdStructNotCanceled(pPdStruct)) {
         qint64 nStartXref = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // \n \r
 
         if (nStartXref != -1) {
