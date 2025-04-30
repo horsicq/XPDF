@@ -540,13 +540,6 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 {
     Q_UNUSED(mapMode)
     // TODO Check streams
-    PDSTRUCT pdStructEmpty = {};
-
-    if (!pPdStruct) {
-        pdStructEmpty = XBinary::createPdStruct();
-        pPdStruct = &pdStructEmpty;
-    }
-
     XBinary::_MEMORY_MAP result = {};
 
     result.nBinarySize = getSize();
@@ -752,13 +745,6 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
 QList<XPDF::TRAILERRECORD> XPDF::readTrailer(PDSTRUCT *pPdStruct)
 {
-    XBinary::PDSTRUCT pdStructEmpty = {};
-
-    if (!pPdStruct) {
-        pdStructEmpty = XBinary::createPdStruct();
-        pPdStruct = &pdStructEmpty;
-    }
-
     QList<XPDF::TRAILERRECORD> listResult;
 
     qint64 nSize = getSize();
