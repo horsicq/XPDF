@@ -27,12 +27,12 @@
 class XPDF : public XBinary {
     Q_OBJECT
 
-    struct TRAILERRECORD {
-        QString sName;
-        QString sValue;
+public:
+    enum TYPE {
+        TYPE_UNKNOWN = 0,
+        TYPE_DOCUMENT
     };
 
-public:
     struct STARTHREF {
         qint64 nXrefOffset;
         qint64 nFooterOffset;
@@ -45,11 +45,17 @@ public:
         qint64 nSize;
     };
 
+    struct STREAM {
+        qint64 nOffset;
+        qint64 nSize;
+    };
+
     struct OBJECT_EX {
         quint64 nID;
         qint64 nOffset;
         qint64 nSize;
         QList<QString> listParts;
+        QList<STREAM> listStreams;
     };
 
     XPDF(QIODevice *pDevice);
@@ -67,7 +73,6 @@ public:
     QList<STARTHREF> findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct);
     QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
     QList<OBJECT> findObjects(PDSTRUCT *pPdStruct);
-    QList<TRAILERRECORD> readTrailer(PDSTRUCT *pPdStruct = nullptr);
     OS_STRING _readPDFString(qint64 nOffset, qint64 nSize);
     OS_STRING _readPDFStringPart_title(qint64 nOffset, qint64 nSize);
     OS_STRING _readPDFStringPart(qint64 nOffset);
@@ -81,17 +86,22 @@ public:
     OBJECT_EX getObject(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
     static bool _isObject(const QString &sString);
     static bool _isString(const QString &sString);
+    static bool _isHex(const QString &sString);
     static bool _isDateTime(const QString &sString);
     static bool _isEndObject(const QString &sString);
     static bool _isComment(const QString &sString);
     static QString _getCommentString(const QString &sString);
     static QString _getString(const QString &sString);
+    static QString _getHex(const QString &sString);
     static QDateTime _getDateTime(const QString &sString);
     static qint32 getObjectID(const QString &sString);
     virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
 
     QList<OBJECT_EX> getObjects(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
-    static QList<QVariant> getValuesByKey(QList<OBJECT_EX> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+    static QList<XVARIANT> getValuesByKey(QList<OBJECT_EX> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+
+    virtual qint32 getType();
+    virtual QString typeIdToString(qint32 nType);
 };
 
 #endif  // XPDF_H
