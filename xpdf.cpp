@@ -717,8 +717,12 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
                 OS_STRING osEnd = _readPDFString(nCurrent, 20);
 
-                if (osEnd.sString == "%%EOF") {
-                    nCurrent += osEnd.nSize;
+                QString _sEndOfFile = osEnd.sString;
+
+                _sEndOfFile.resize(5, QChar(' '));
+
+                if (_sEndOfFile == "%%EOF") {
+                    nCurrent += 5;
 
                     STARTHREF record = {};
 
@@ -727,6 +731,10 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
                     record.nFooterSize = nCurrent - nStartXref;
 
                     listResult.append(record);
+
+                    if (osEnd.sString.size() != 5) {
+                        break;
+                    }
 
                     OS_STRING osAppend = _readPDFString(nCurrent, 20);
 
@@ -1055,6 +1063,41 @@ QString XPDF::typeIdToString(qint32 nType)
     switch (nType) {
     case TYPE_UNKNOWN: sResult = tr("Unknown"); break;
     case TYPE_DOCUMENT: sResult = tr("Document"); break;
+    }
+
+    return sResult;
+}
+
+QString XPDF::getHeaderCommentAsHex()
+{
+    QString sResult;
+
+    qint64 nCurrentOffset = 0;
+
+    OS_STRING osString = _readPDFString(nCurrentOffset, 100);
+    nCurrentOffset += osString.nSize;
+    skipPDFEnding(&nCurrentOffset);
+
+    if (read_uint8(nCurrentOffset) == '%') {
+        nCurrentOffset++;
+
+        QByteArray baData;
+
+        for (qint32 i = 0; i < 20; i++) {
+            quint8 nChar = read_uint8(nCurrentOffset + i);
+
+            if (nChar == 10) {
+                break;
+            } else if (nChar == 13) {
+                if (read_uint8(nCurrentOffset + i + 1) == 10) {
+                    break;
+                }
+            }
+
+            baData.append(nChar);
+        }
+
+        sResult = baData.toHex();
     }
 
     return sResult;

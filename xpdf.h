@@ -102,6 +102,8 @@ public:
 
     virtual qint32 getType();
     virtual QString typeIdToString(qint32 nType);
+
+    QString getHeaderCommentAsHex();
 };
 
 #endif  // XPDF_H
