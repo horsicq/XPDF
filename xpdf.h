@@ -50,7 +50,7 @@ public:
         qint64 nSize;
     };
 
-    struct OBJECT_EX {
+    struct XPART {
         quint64 nID;
         qint64 nOffset;
         qint64 nSize;
@@ -83,7 +83,7 @@ public:
     qint32 skipPDFEnding(qint64 *pnOffset);
     qint32 skipPDFSpace(qint64 *pnOffset);
     qint32 skipPDFString(qint64 *pnOffset);
-    OBJECT_EX getObject(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
+    XPART handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
     static bool _isObject(const QString &sString);
     static bool _isString(const QString &sString);
     static bool _isHex(const QString &sString);
@@ -97,8 +97,8 @@ public:
     static qint32 getObjectID(const QString &sString);
     virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
 
-    QList<OBJECT_EX> getObjects(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
-    static QList<XVARIANT> getValuesByKey(QList<OBJECT_EX> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+    QList<XPART> getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
+    static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 
     virtual qint32 getType();
     virtual QString typeIdToString(qint32 nType);

@@ -745,9 +745,9 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
     return listResult;
 }
 
-XPDF::OBJECT_EX XPDF::getObject(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct)
+XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct)
 {
-    OBJECT_EX result = {};
+    XPART result = {};
     result.nOffset = nOffset;
     result.nID = nID;
 
@@ -988,7 +988,7 @@ qint32 XPDF::getObjectID(const QString &sString)
     return sString.section(" ", 0, 0).toInt();
 }
 
-QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<OBJECT_EX> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct)
+QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct)
 {
     QList<XVARIANT> listResult;
     QSet<QString> stVars;
@@ -999,7 +999,7 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<OBJECT_EX> *pListObjects, co
     XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfRecords);
 
     for (qint32 i = 0; (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        OBJECT_EX record = pListObjects->at(i);
+        XPART record = pListObjects->at(i);
 
         qint32 nNumberOfParts = record.listParts.count();
 
@@ -1060,9 +1060,9 @@ QString XPDF::typeIdToString(qint32 nType)
     return sResult;
 }
 
-QList<XPDF::OBJECT_EX> XPDF::getObjects(qint32 nPartLimit, PDSTRUCT *pPdStruct)
+QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
 {
-    QList<OBJECT_EX> listResult;
+    QList<XPART> listResult;
 
     QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
 
@@ -1088,9 +1088,9 @@ QList<XPDF::OBJECT_EX> XPDF::getObjects(qint32 nPartLimit, PDSTRUCT *pPdStruct)
         for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             OBJECT record = listObject.at(i);
 
-            OBJECT_EX object_ex = getObject(record.nOffset, record.nID, nPartLimit, pPdStruct);
+            XPART xpart = handleXpart(record.nOffset, record.nID, nPartLimit, pPdStruct);
 
-            listResult.append(object_ex);
+            listResult.append(xpart);
 
             XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
         }
