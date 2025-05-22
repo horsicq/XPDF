@@ -1083,15 +1083,11 @@ QString XPDF::getHeaderCommentAsHex()
 
         QByteArray baData;
 
-        for (qint32 i = 0; i < 20; i++) {
+        for (qint32 i = 0; i < 40; i++) {
             quint8 nChar = read_uint8(nCurrentOffset + i);
 
-            if (nChar == 10) {
+            if ((nChar == 13) || (nChar == 10) || (nChar == 0)) {
                 break;
-            } else if (nChar == 13) {
-                if (read_uint8(nCurrentOffset + i + 1) == 10) {
-                    break;
-                }
             }
 
             baData.append(nChar);
