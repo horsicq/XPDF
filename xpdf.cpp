@@ -724,6 +724,10 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
                 if (_sEndOfFile == "%%EOF") {
                     nCurrent += 5;
 
+                    if (read_uint8(nCurrent) == 10) {
+                        nCurrent ++;  // Skip \n
+                    }
+
                     STARTHREF record = {};
 
                     record.nXrefOffset = _nOffset;
