@@ -725,7 +725,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
                     nCurrent += 5;
 
                     if (read_uint8(nCurrent) == 10) {
-                        nCurrent ++;  // Skip \n
+                        nCurrent++;  // Skip \n
                     }
 
                     STARTHREF record = {};
@@ -1065,8 +1065,8 @@ QString XPDF::typeIdToString(qint32 nType)
     QString sResult = tr("Unknown");
 
     switch (nType) {
-    case TYPE_UNKNOWN: sResult = tr("Unknown"); break;
-    case TYPE_DOCUMENT: sResult = tr("Document"); break;
+        case TYPE_UNKNOWN: sResult = tr("Unknown"); break;
+        case TYPE_DOCUMENT: sResult = tr("Document"); break;
     }
 
     return sResult;
