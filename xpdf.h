@@ -37,6 +37,8 @@ public:
         qint64 nXrefOffset;
         qint64 nFooterOffset;
         qint64 nFooterSize;
+        bool bIsXref;
+        bool bIsObject;
     };
 
     struct OBJECT {
@@ -90,6 +92,7 @@ public:
     static bool _isDateTime(const QString &sString);
     static bool _isEndObject(const QString &sString);
     static bool _isComment(const QString &sString);
+    static bool _isXref(const QString &sString);
     static QString _getCommentString(const QString &sString);
     static QString _getString(const QString &sString);
     static QString _getHex(const QString &sString);
@@ -104,6 +107,8 @@ public:
     virtual QString typeIdToString(qint32 nType);
 
     QString getHeaderCommentAsHex();
+
+    virtual QList<FPART> getFileParts(PDSTRUCT *pPdStruct = nullptr);
 };
 
 #endif  // XPDF_H

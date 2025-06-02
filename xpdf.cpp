@@ -172,73 +172,77 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
     qint64 nCurrentOffset = pStartxref->nXrefOffset;
 
-    skipPDFString(&nCurrentOffset);
+    OS_STRING osStringHref = _readPDFString(nCurrentOffset, 20);
 
-    QMap<qint64, quint64> mapObjects;
+    if (_isXref(osStringHref.sString)) {
+        nCurrentOffset += osStringHref.nSize;
 
-    while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-        OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
+        QMap<qint64, quint64> mapObjects;
 
-        if (osSection.sString != "") {
-            quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
-            quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
+        while (XBinary::isPdStructNotCanceled(pPdStruct)) {
+            OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
 
-            nCurrentOffset += osSection.nSize;
+            if (osSection.sString != "") {
+                quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
+                quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
 
-            if (nNumberOfObjects) {
-                qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
-                XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
+                nCurrentOffset += osSection.nSize;
 
-                for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-                    OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
+                if (nNumberOfObjects) {
+                    qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
+                    XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
 
-                    if (osObject.sString.section(" ", 2, 2) == "n") {
-                        qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
+                    for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+                        OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
 
-                        // OS_STRING osTitle = _readPDFStringPart_title(nObjectOffset, 20);
+                        if (osObject.sString.section(" ", 2, 2) == "n") {
+                            qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
-                        // if (_isObject(osTitle.sString)) {
-                        //      mapObjects.insert(nObjectOffset, nID + j);
-                        // }
-                        if ((nObjectOffset > 0) && (nObjectOffset < nTotalSize)) {
-                            mapObjects.insert(nObjectOffset, nID + i);
+                            // OS_STRING osTitle = _readPDFStringPart_title(nObjectOffset, 20);
+
+                            // if (_isObject(osTitle.sString)) {
+                            //      mapObjects.insert(nObjectOffset, nID + j);
+                            // }
+                            if ((nObjectOffset > 0) && (nObjectOffset < nTotalSize)) {
+                                mapObjects.insert(nObjectOffset, nID + i);
+                            }
                         }
+
+                        nCurrentOffset += osObject.nSize;
+                        XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
                     }
 
-                    nCurrentOffset += osObject.nSize;
-                    XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
+                    XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+                } else {
+                    break;
                 }
-
-                XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
             } else {
                 break;
             }
-        } else {
-            break;
         }
-    }
 
-    QMapIterator<qint64, quint64> iterator(mapObjects);
-    while (iterator.hasNext()) {
-        iterator.next();
+        QMapIterator<qint64, quint64> iterator(mapObjects);
+        while (iterator.hasNext()) {
+            iterator.next();
 
-        OBJECT object;
-        object.nOffset = iterator.key();
-        object.nID = iterator.value();
-        object.nSize = 0;  // Will be calculated later
+            OBJECT object;
+            object.nOffset = iterator.key();
+            object.nID = iterator.value();
+            object.nSize = 0;  // Will be calculated later
 
-        listResult.append(object);
-    }
+            listResult.append(object);
+        }
 
-    qint32 nNumberOfObjects = listResult.count();
-    // Calculate sizes based on consecutive offsets
-    for (int i = 0; i < nNumberOfObjects - 1; i++) {
-        listResult[i].nSize = listResult[i + 1].nOffset - listResult[i].nOffset;
-    }
+        qint32 nNumberOfObjects = listResult.count();
+        // Calculate sizes based on consecutive offsets
+        for (int i = 0; i < nNumberOfObjects - 1; i++) {
+            listResult[i].nSize = listResult[i + 1].nOffset - listResult[i].nOffset;
+        }
 
-    // Handle the last object's size using nXrefOffset
-    if (!listResult.isEmpty()) {
-        listResult.last().nSize = pStartxref->nXrefOffset - listResult.last().nOffset;
+        // Handle the last object's size using nXrefOffset
+        if (!listResult.isEmpty()) {
+            listResult.last().nSize = pStartxref->nXrefOffset - listResult.last().nOffset;
+        }
     }
 
     return listResult;
@@ -578,35 +582,39 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         for (int j = 0; (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
             STARTHREF startxref = listStrartHrefs.at(j);
 
-            QList<OBJECT> listObject = getObjectsFromStartxref(&startxref, pPdStruct);
+            if (startxref.bIsXref) {
+                QList<OBJECT> listObject = getObjectsFromStartxref(&startxref, pPdStruct);
 
-            qint32 nNumberOfObjects = listObject.count();
+                qint32 nNumberOfObjects = listObject.count();
 
-            for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-                _MEMORY_RECORD record = {};
+                for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+                    _MEMORY_RECORD record = {};
 
-                record.nIndex = nIndex++;
-                record.type = MMT_OBJECT;
-                record.nOffset = listObject.at(i).nOffset;
-                record.nSize = listObject.at(i).nSize;
-                record.nID = listObject.at(i).nID;
-                record.nAddress = -1;
-                record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+                    record.nIndex = nIndex++;
+                    record.type = MMT_OBJECT;
+                    record.nOffset = listObject.at(i).nOffset;
+                    record.nSize = listObject.at(i).nSize;
+                    record.nID = listObject.at(i).nID;
+                    record.nAddress = -1;
+                    record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
 
-                result.listRecords.append(record);
-            }
+                    result.listRecords.append(record);
+                }
 
-            {
-                _MEMORY_RECORD record = {};
+                {
+                    _MEMORY_RECORD record = {};
 
-                record.nIndex = nIndex++;
-                record.type = MMT_DATA;
-                record.nOffset = startxref.nXrefOffset;
-                record.nSize = startxref.nFooterOffset - startxref.nXrefOffset;
-                record.nAddress = -1;
-                record.sName = QString("xref");
+                    record.nIndex = nIndex++;
+                    record.type = MMT_DATA;
+                    record.nOffset = startxref.nXrefOffset;
+                    record.nSize = startxref.nFooterOffset - startxref.nXrefOffset;
+                    record.nAddress = -1;
+                    record.sName = QString("xref");
 
-                result.listRecords.append(record);
+                    result.listRecords.append(record);
+                }
+            } else {
+                // TODO
             }
 
             // if (startxref.nFooterOffset - nCurrentOffset > 0) {
@@ -712,38 +720,49 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
             OS_STRING osHref = _readPDFString(_nOffset, 20);
 
-            if ((osHref.sString == "xref") && (_nOffset < nCurrent)) {
-                nCurrent += osOffset.nSize;
+            bool bIsXref = _isXref(osHref.sString);
+            bool bIsObject = _isObject(osHref.sString);
 
-                OS_STRING osEnd = _readPDFString(nCurrent, 20);
+            if (bIsXref || bIsObject) {
+                if (_nOffset < nCurrent) {
+                    nCurrent += osOffset.nSize;
 
-                QString _sEndOfFile = osEnd.sString;
+                    OS_STRING osEnd = _readPDFString(nCurrent, 20);
 
-                _sEndOfFile.resize(5, QChar(' '));
+                    QString _sEndOfFile = osEnd.sString;
 
-                if (_sEndOfFile == "%%EOF") {
-                    nCurrent += 5;
+                    _sEndOfFile.resize(5, QChar(' '));
 
-                    if (read_uint8(nCurrent) == 10) {
-                        nCurrent++;  // Skip \n
-                    }
+                    if (_sEndOfFile == "%%EOF") {
+                        nCurrent += 5;
 
-                    STARTHREF record = {};
+                        if (read_uint8(nCurrent) == 13) {
+                            nCurrent++;  // Skip \r
+                        }
 
-                    record.nXrefOffset = _nOffset;
-                    record.nFooterOffset = nStartXref;
-                    record.nFooterSize = nCurrent - nStartXref;
+                        if (read_uint8(nCurrent) == 10) {
+                            nCurrent++;  // Skip \n
+                        }
 
-                    listResult.append(record);
+                        STARTHREF record = {};
 
-                    if (osEnd.sString.size() != 5) {
-                        break;
-                    }
+                        record.nXrefOffset = _nOffset;
+                        record.nFooterOffset = nStartXref;
+                        record.nFooterSize = nCurrent - nStartXref;
+                        record.bIsObject = bIsObject;
+                        record.bIsXref = bIsXref;
 
-                    OS_STRING osAppend = _readPDFString(nCurrent, 20);
+                        listResult.append(record);
 
-                    if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString))) {
-                        break;  // No append
+                        if (osEnd.sString.size() != 5) {
+                            break;
+                        }
+
+                        OS_STRING osAppend = _readPDFString(nCurrent, 20);
+
+                        if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString)) && (!_isXref(osAppend.sString))) {
+                            break;  // No append
+                        }
                     }
                 }
             }
@@ -943,6 +962,17 @@ bool XPDF::_isComment(const QString &sString)
     return bResult;
 }
 
+bool XPDF::_isXref(const QString &sString)
+{
+    bool bResult = false;
+
+    if (sString.size() > 0) {
+        bResult = (sString.section(" ", 0, 0) == "xref");
+    }
+
+    return bResult;
+}
+
 QString XPDF::_getCommentString(const QString &sString)
 {
     QString sResult;
@@ -1101,6 +1131,37 @@ QString XPDF::getHeaderCommentAsHex()
     }
 
     return sResult;
+}
+
+QList<XBinary::FPART> XPDF::getFileParts(PDSTRUCT *pPdStruct)
+{
+    QList<XBinary::FPART> listResult;
+
+    QList<XPDF::XPART> listParts = getParts(-1, pPdStruct);
+
+    qint32 nNumberOfParts = listParts.count();
+    qint32 nStreamNumber = 0;
+
+    for (qint32 i = 0; i < nNumberOfParts; i++) {
+        XPART xpart = listParts.at(i);
+
+        qint32 nNumberOfStreams = xpart.listStreams.count();
+
+        for (qint32 j = 0; j < nNumberOfStreams; j++) {
+            STREAM stream = xpart.listStreams.at(j);
+
+            XBinary::FPART fpart = {};
+            fpart.nOffset = stream.nOffset;
+            fpart.nSize = stream.nSize;
+            fpart.sName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
+
+            listResult.append(fpart);
+
+            nStreamNumber++;
+        }
+    }
+
+    return listResult;
 }
 
 QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
