@@ -71,13 +71,17 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
-QList<XPDF::OBJECT> XPDF::findObjects(PDSTRUCT *pPdStruct)
+QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct)
 {
+    if (nSize == -1) {
+        nSize = getSize() - nOffset;
+    }
+
     QList<XPDF::OBJECT> listResult;
 
-    qint64 nCurrentOffset = 0;
+    qint64 nCurrentOffset = nOffset;
 
-    while (XBinary::isPdStructNotCanceled(pPdStruct)) {
+    while (XBinary::isPdStructNotCanceled(pPdStruct) && (nCurrentOffset < nOffset + nSize)) {
         OS_STRING osString = _readPDFString(nCurrentOffset, 100);
 
         if (_isObject(osString.sString)) {
@@ -613,8 +617,26 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 
                     result.listRecords.append(record);
                 }
-            } else {
-                // TODO
+            } else if (startxref.bIsObject) {
+                QList<OBJECT> listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, pPdStruct);
+
+                qint32 nNumberOfObjects = listObject.count();
+
+                for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+                    _MEMORY_RECORD record = {};
+
+                    record.nIndex = nIndex++;
+                    record.type = MMT_OBJECT;
+                    record.nOffset = listObject.at(i).nOffset;
+                    record.nSize = listObject.at(i).nSize;
+                    record.nID = listObject.at(i).nID;
+                    record.nAddress = -1;
+                    record.sName = QString("%1 %2").arg(tr("Object"), QString::number(record.nID));
+
+                    result.listRecords.append(record);
+
+                    nMaxOffset = listObject.at(i).nOffset + listObject.at(i).nSize;
+                }
             }
 
             // if (startxref.nFooterOffset - nCurrentOffset > 0) {
@@ -638,7 +660,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         nMaxOffset = listStrartHrefs.at(nNumberOfFrefs - 1).nFooterOffset + listStrartHrefs.at(nNumberOfFrefs - 1).nFooterSize;
     } else {
         // File damaged;
-        QList<OBJECT> listObject = findObjects(pPdStruct);
+        QList<OBJECT> listObject = findObjects(0, -1, pPdStruct);
 
         qint32 nNumberOfObjects = listObject.count();
 
@@ -1177,10 +1199,14 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
         for (int i = 0; (i < nNumberOfHrefs) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             STARTHREF startxref = listStrartHrefs.at(i);
 
-            listObject = getObjectsFromStartxref(&startxref, pPdStruct);
+            if (startxref.bIsXref) {
+                listObject.append(getObjectsFromStartxref(&startxref, pPdStruct));
+            } else if (startxref.bIsObject) {
+                listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, pPdStruct);
+            }
         }
     } else {
-        listObject = findObjects(pPdStruct);
+        listObject = findObjects(0, -1, pPdStruct);
     }
 
     qint32 nNumberOfObjects = listObject.count();
