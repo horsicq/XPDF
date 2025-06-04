@@ -71,7 +71,17 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
-QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct)
+QString XPDF::getMIMEString()
+{
+    return "application/pdf";
+}
+
+XBinary::MODE XPDF::getMode()
+{
+    return MODE_UNKNOWN;  // PDF does not have a specific mode like 16/32/64
+}
+
+QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepScan, PDSTRUCT *pPdStruct)
 {
     if (nSize == -1) {
         nSize = getSize() - nOffset;
@@ -110,7 +120,29 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, PDSTRUCT *pP
             nCurrentOffset += osString.nSize;
             skipPDFEnding(&nCurrentOffset);
         } else {
-            break;
+            bool bContinue = false;
+            if (bDeepScan) {
+                nCurrentOffset = find_ansiString(nCurrentOffset, (nOffset + nSize) - nCurrentOffset, " obj", pPdStruct);
+
+                if (nCurrentOffset != -1) {
+                    while (nCurrentOffset > 0) {
+                        quint8 _nChar = read_uint8(nCurrentOffset - 1);
+
+                        // If not number and not space
+                        if (!(((_nChar >= '0') && (_nChar <= '9')) || (_nChar == ' '))) {
+                            break;
+                        }
+
+                        nCurrentOffset--;
+                    }
+
+                    bContinue = true;
+                }
+            }
+
+            if (!bContinue) {
+                break;
+            }
         }
     }
 
@@ -618,7 +650,8 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
                     result.listRecords.append(record);
                 }
             } else if (startxref.bIsObject) {
-                QList<OBJECT> listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, pPdStruct);
+                // QList<OBJECT> listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, true, pPdStruct);
+                QList<OBJECT> listObject = findObjects(0, startxref.nFooterOffset, true, pPdStruct);
 
                 qint32 nNumberOfObjects = listObject.count();
 
@@ -660,7 +693,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
         nMaxOffset = listStrartHrefs.at(nNumberOfFrefs - 1).nFooterOffset + listStrartHrefs.at(nNumberOfFrefs - 1).nFooterSize;
     } else {
         // File damaged;
-        QList<OBJECT> listObject = findObjects(0, -1, pPdStruct);
+        QList<OBJECT> listObject = findObjects(0, -1, false, pPdStruct);
 
         qint32 nNumberOfObjects = listObject.count();
 
@@ -1176,6 +1209,7 @@ QList<XBinary::FPART> XPDF::getFileParts(PDSTRUCT *pPdStruct)
             fpart.nOffset = stream.nOffset;
             fpart.nSize = stream.nSize;
             fpart.sName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
+            fpart.filePart = XBinary::FILEPART_STREAM;
 
             listResult.append(fpart);
 
@@ -1202,11 +1236,12 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
             if (startxref.bIsXref) {
                 listObject.append(getObjectsFromStartxref(&startxref, pPdStruct));
             } else if (startxref.bIsObject) {
-                listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, pPdStruct);
+                // listObject = findObjects(startxref.nXrefOffset, startxref.nFooterOffset - startxref.nXrefOffset, true, pPdStruct);
+                listObject = findObjects(0, startxref.nFooterOffset, true, pPdStruct);
             }
         }
     } else {
-        listObject = findObjects(0, -1, pPdStruct);
+        listObject = findObjects(0, -1, false, pPdStruct);
     }
 
     qint32 nNumberOfObjects = listObject.count();
@@ -1244,13 +1279,14 @@ XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
         result.fileType = memoryMap.fileType;
         result.sExt = getFileFormatExt();
         result.sVersion = getVersion();
-        result.sOptions = getOptions();
+        result.sInfo = getInfo();
         result.osName = getOsName();
         result.sOsVersion = getOsVersion();
         result.sArch = memoryMap.sArch;
         result.mode = memoryMap.mode;
         result.sType = memoryMap.sType;
         result.endian = memoryMap.endian;
+        result.sMIME = getMIMEString();
         result.nNumberOfRecords = XBinary::getNumberOfMemoryMapTypeRecords(&memoryMap, MMT_OBJECT);
 
         if (result.nSize == 0) {
