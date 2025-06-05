@@ -32,6 +32,7 @@ bool XPDF::isValid(PDSTRUCT *pPdStruct)
 
     // TODO more checks !!!
     // 1.0-2.0
+    // %PDF-
     if (getSize() > 4) {
         if (read_uint32(0) == 0x46445025)  // '%PDF'
         {
