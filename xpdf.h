@@ -68,6 +68,7 @@ public:
     virtual ENDIAN getEndian();
     virtual qint64 getFileFormatSize(PDSTRUCT *pPdStruct);
     virtual QString getFileFormatExt();
+    virtual QString getFileFormatExtsString();
     virtual MODE getMode();
     virtual QString getMIMEString();
 

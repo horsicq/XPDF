@@ -72,6 +72,11 @@ QString XPDF::getFileFormatExt()
     return "pdf";
 }
 
+QString XPDF::getFileFormatExtsString()
+{
+    return "PDF(pdf)";
+}
+
 QString XPDF::getMIMEString()
 {
     return "application/pdf";
