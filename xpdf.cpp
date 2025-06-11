@@ -742,18 +742,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     }
 
     if (bValid) {
-        if (nMaxOffset < result.nBinarySize) {
-            _MEMORY_RECORD record = {};
-
-            record.nIndex = nIndex++;
-            record.type = MMT_OVERLAY;
-            record.nOffset = nMaxOffset;
-            record.nSize = result.nBinarySize - nMaxOffset;
-            record.nAddress = -1;
-            record.sName = tr("Overlay");
-
-            result.listRecords.append(record);
-        }
+       _handleOverlay(&result);
     }
 
     // std::sort(result.listRecords.begin(), result.listRecords.end(), compareMemoryMapRecord);
