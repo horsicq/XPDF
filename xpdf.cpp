@@ -742,7 +742,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     }
 
     if (bValid) {
-       _handleOverlay(&result);
+        _handleOverlay(&result);
     }
 
     // std::sort(result.listRecords.begin(), result.listRecords.end(), compareMemoryMapRecord);
