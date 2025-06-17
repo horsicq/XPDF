@@ -277,7 +277,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
         qint32 nNumberOfObjects = listResult.count();
         // Calculate sizes based on consecutive offsets
-        for (int i = 0; i < nNumberOfObjects - 1; i++) {
+        for (qint32 i = 0; i < nNumberOfObjects - 1; i++) {
             listResult[i].nSize = listResult[i + 1].nOffset - listResult[i].nOffset;
         }
 
@@ -1225,7 +1225,7 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
 
     QList<OBJECT> listObject;
     if (nNumberOfHrefs) {
-        for (int i = 0; (i < nNumberOfHrefs) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+        for (qint32 i = 0; (i < nNumberOfHrefs) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             STARTHREF startxref = listStrartHrefs.at(i);
 
             if (startxref.bIsXref) {
