@@ -22,7 +22,7 @@
 #define XPDF_H
 
 #include "xbinary.h"
-#include "xpdf_def.h"
+#include "xpdf_def.h"  // TODO remove
 
 class XPDF : public XBinary {
     Q_OBJECT
