@@ -111,7 +111,7 @@ public:
 
     QString getHeaderCommentAsHex();
 
-    virtual QList<FPART> getFileParts(PDSTRUCT *pPdStruct = nullptr);
+    virtual QList<FPART> getFileParts(quint32 nFileParts, qint32 nLimit = -1, PDSTRUCT *pPdStruct = nullptr);
 };
 
 #endif  // XPDF_H

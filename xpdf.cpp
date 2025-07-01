@@ -1183,7 +1183,7 @@ QString XPDF::getHeaderCommentAsHex()
     return sResult;
 }
 
-QList<XBinary::FPART> XPDF::getFileParts(PDSTRUCT *pPdStruct)
+QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDSTRUCT *pPdStruct)
 {
     QList<XBinary::FPART> listResult;
 
@@ -1201,9 +1201,9 @@ QList<XBinary::FPART> XPDF::getFileParts(PDSTRUCT *pPdStruct)
             STREAM stream = xpart.listStreams.at(j);
 
             XBinary::FPART fpart = {};
-            fpart.nOffset = stream.nOffset;
-            fpart.nSize = stream.nSize;
-            fpart.sName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
+            fpart.nFileOffset = stream.nOffset;
+            fpart.nFileSize = stream.nSize;
+            fpart.sOriginalName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
             fpart.filePart = XBinary::FILEPART_STREAM;
 
             listResult.append(fpart);
