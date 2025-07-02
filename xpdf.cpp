@@ -593,7 +593,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     }
 
     if (mapMode == MAPMODE_OBJECTS) {
-        result = _getMemoryMap(FILEPART_SIGNATURE | FILEPART_OBJECT | FILEPART_FOOTER| FILEPART_TABLE| FILEPART_OVERLAY, pPdStruct);
+        result = _getMemoryMap(FILEPART_SIGNATURE | FILEPART_OBJECT | FILEPART_FOOTER | FILEPART_TABLE | FILEPART_OVERLAY, pPdStruct);
     } else if (mapMode == MAPMODE_STREAMS) {
         result = _getMemoryMap(FILEPART_STREAM, pPdStruct);
     } else if (mapMode == MAPMODE_DATA) {
@@ -638,7 +638,6 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
                     if (_sEndOfFile == "%%EOF") {
                         nCurrent += 5;
-
 
                         if (_isOffsetValid(nCurrent) && (read_uint8(nCurrent) == 13)) {
                             nCurrent++;  // Skip \r
@@ -1122,7 +1121,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                 if (nFileParts & FILEPART_TABLE) {
                     FPART record = {};
 
-                    record.filePart =FILEPART_DATA;
+                    record.filePart = FILEPART_DATA;
                     record.nFileOffset = startxref.nXrefOffset;
                     record.nFileSize = startxref.nFooterOffset - startxref.nXrefOffset;
                     record.nVirtualAddress = -1;
