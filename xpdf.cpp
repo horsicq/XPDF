@@ -1262,7 +1262,8 @@ XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
     if (result.bIsValid) {
         _MEMORY_MAP memoryMap = getMemoryMap(MAPMODE_OBJECTS, pPdStruct);
 
-        result.nSize = _calculateRawSize(&memoryMap, pPdStruct);
+        result.bIsValid = true;
+        result.nSize = getSize();
         result.fileType = memoryMap.fileType;
         result.sExt = getFileFormatExt();
         result.sVersion = getVersion();
@@ -1274,11 +1275,7 @@ XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
         result.sType = memoryMap.sType;
         result.endian = memoryMap.endian;
         result.sMIME = getMIMEString();
-        result.nNumberOfRecords = XBinary::getNumberOfMemoryMapFileParts(&memoryMap, FILEPART_OBJECT);
-
-        if (result.nSize == 0) {
-            result.bIsValid = false;
-        }
+        // result.bIsCrypted = isCr
     }
 
     return result;
