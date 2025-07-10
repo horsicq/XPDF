@@ -1252,31 +1252,3 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
     return listResult;
 }
-
-XBinary::FILEFORMATINFO XPDF::getFileFormatInfo(PDSTRUCT *pPdStruct)
-{
-    FILEFORMATINFO result = {};
-
-    result.bIsValid = isValid(pPdStruct);
-
-    if (result.bIsValid) {
-        _MEMORY_MAP memoryMap = getMemoryMap(MAPMODE_OBJECTS, pPdStruct);
-
-        result.bIsValid = true;
-        result.nSize = getSize();
-        result.fileType = memoryMap.fileType;
-        result.sExt = getFileFormatExt();
-        result.sVersion = getVersion();
-        result.sInfo = getInfo();
-        result.osName = getOsName();
-        result.sOsVersion = getOsVersion();
-        result.sArch = memoryMap.sArch;
-        result.mode = memoryMap.mode;
-        result.sType = memoryMap.sType;
-        result.endian = memoryMap.endian;
-        result.sMIME = getMIMEString();
-        // result.bIsCrypted = isCr
-    }
-
-    return result;
-}

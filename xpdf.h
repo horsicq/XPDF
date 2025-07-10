@@ -101,7 +101,6 @@ public:
     static QString _getHex(const QString &sString);
     static QDateTime _getDateTime(const QString &sString);
     static qint32 getObjectID(const QString &sString);
-    virtual FILEFORMATINFO getFileFormatInfo(PDSTRUCT *pPdStruct);
 
     QList<XPART> getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
     static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
