@@ -1218,7 +1218,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                 qint32 nNumberOfStreams = xpart.listStreams.count();
 
-                for (qint32 j = 0; j < nNumberOfStreams; j++) {
+                for (qint32 j = 0; (j < nNumberOfStreams) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
                     STREAM stream = xpart.listStreams.at(j);
 
                     XBinary::FPART record = {};
