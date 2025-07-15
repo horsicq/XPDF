@@ -277,7 +277,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
         qint32 nNumberOfObjects = listResult.count();
         // Calculate sizes based on consecutive offsets
-        for (qint32 i = 0; i < nNumberOfObjects - 1; i++) {
+        for (qint32 i = 0; (i < nNumberOfObjects - 1) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             listResult[i].nSize = listResult[i + 1].nOffset - listResult[i].nOffset;
         }
 
