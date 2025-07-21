@@ -47,7 +47,7 @@ QString XPDF::getVersion()
 {
     QString sResult;
 
-    sResult = _readPDFString(5, 5).sString;
+    sResult = _readPDFString(5, 5, nullptr).sString;
 
     return sResult;
 }
@@ -98,14 +98,14 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
     qint64 nCurrentOffset = nOffset;
 
     while (XBinary::isPdStructNotCanceled(pPdStruct) && (nCurrentOffset < nOffset + nSize)) {
-        OS_STRING osString = _readPDFString(nCurrentOffset, 100);
+        OS_STRING osString = _readPDFString(nCurrentOffset, 100, pPdStruct);
 
         if (_isObject(osString.sString)) {
             quint64 nID = getObjectID(osString.sString);
             qint64 nEndObjOffset = find_ansiString(nCurrentOffset + osString.nSize, -1, "endobj", pPdStruct);
 
             if (nEndObjOffset != -1) {
-                OS_STRING osEndObj = _readPDFString(nEndObjOffset, 100);
+                OS_STRING osEndObj = _readPDFString(nEndObjOffset, 100, pPdStruct);
 
                 if (_isEndObject(osEndObj.sString)) {
                     OBJECT record = {};
@@ -157,7 +157,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
 
 qint32 XPDF::skipPDFString(qint64 *pnOffset)
 {
-    OS_STRING osString = _readPDFString(*pnOffset, 20);
+    OS_STRING osString = _readPDFString(*pnOffset, 20, nullptr);
     *pnOffset += osString.nSize;
 
     return osString.nSize;
@@ -214,7 +214,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
 
     qint64 nCurrentOffset = pStartxref->nXrefOffset;
 
-    OS_STRING osStringHref = _readPDFString(nCurrentOffset, 20);
+    OS_STRING osStringHref = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
     if (_isXref(osStringHref.sString)) {
         nCurrentOffset += osStringHref.nSize;
@@ -222,7 +222,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
         QMap<qint64, quint64> mapObjects;
 
         while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-            OS_STRING osSection = _readPDFString(nCurrentOffset, 20);
+            OS_STRING osSection = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
             if (osSection.sString != "") {
                 quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
@@ -235,7 +235,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
                     XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
 
                     for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-                        OS_STRING osObject = _readPDFString(nCurrentOffset, 20);
+                        OS_STRING osObject = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
                         if (osObject.sString.section(" ", 2, 2) == "n") {
                             qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
@@ -290,7 +290,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
     return listResult;
 }
 
-XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize)
+XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -304,7 +304,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize)
         nSize = getSize() - nOffset;
     }
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
         if ((nChar == 0) || (nChar == 13) || (nChar == 10)) {
@@ -613,15 +613,15 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
         if (nStartXref != -1) {
             qint64 nCurrent = nStartXref;
 
-            OS_STRING osStartXref = _readPDFString(nCurrent, 20);
+            OS_STRING osStartXref = _readPDFString(nCurrent, 20, pPdStruct);
 
             nCurrent += osStartXref.nSize;
 
-            OS_STRING osOffset = _readPDFString(nCurrent, 20);
+            OS_STRING osOffset = _readPDFString(nCurrent, 20, pPdStruct);
 
             qint64 _nOffset = osOffset.sString.toLongLong();
 
-            OS_STRING osHref = _readPDFString(_nOffset, 20);
+            OS_STRING osHref = _readPDFString(_nOffset, 20, pPdStruct);
 
             bool bIsXref = _isXref(osHref.sString);
             bool bIsObject = _isObject(osHref.sString);
@@ -630,7 +630,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
                 if (_nOffset < nCurrent) {
                     nCurrent += osOffset.nSize;
 
-                    OS_STRING osEnd = _readPDFString(nCurrent, 20);
+                    OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
 
                     QString _sEndOfFile = osEnd.sString;
 
@@ -661,7 +661,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
                             break;
                         }
 
-                        OS_STRING osAppend = _readPDFString(nCurrent, 20);
+                        OS_STRING osAppend = _readPDFString(nCurrent, 20, pPdStruct);
 
                         if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString)) && (!_isXref(osAppend.sString))) {
                             break;  // No append
@@ -1057,7 +1057,7 @@ QString XPDF::getHeaderCommentAsHex()
 
     qint64 nCurrentOffset = 0;
 
-    OS_STRING osString = _readPDFString(nCurrentOffset, 100);
+    OS_STRING osString = _readPDFString(nCurrentOffset, 100, nullptr);
     nCurrentOffset += osString.nSize;
     skipPDFEnding(&nCurrentOffset);
 
@@ -1097,7 +1097,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
     if (nNumberOfFrefs) {
         if (nFileParts & FILEPART_SIGNATURE) {
-            OS_STRING osHeader = _readPDFString(0, 20);
+            OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
 
             FPART record = {};
 
@@ -1160,7 +1160,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         qint32 nNumberOfObjects = listObject.count();
 
         if (nNumberOfObjects) {
-            OS_STRING osHeader = _readPDFString(0, 20);
+            OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
 
             if (nFileParts & FILEPART_SIGNATURE) {
                 FPART record = {};
