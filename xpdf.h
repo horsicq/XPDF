@@ -79,7 +79,7 @@ public:
     QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
     QList<OBJECT> findObjects(qint64 nOffset, qint64 nSize, bool bDeepScan, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct);
-    OS_STRING _readPDFStringPart_title(qint64 nOffset, qint64 nSize);
+    OS_STRING _readPDFStringPart_title(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFStringPart(qint64 nOffset);
     OS_STRING _readPDFStringPart_const(qint64 nOffset);
     OS_STRING _readPDFStringPart_str(qint64 nOffset);

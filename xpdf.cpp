@@ -323,7 +323,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize)
+XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -337,7 +337,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize)
         nSize = getSize() - nOffset;
     }
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
         if ((nChar == 0) || (nChar == 13) || (nChar == 10) || (nChar == '<')) {
@@ -691,7 +691,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // TODO Read Object
         bool bStop = false;
-        OS_STRING osString = _readPDFStringPart_title(nOffset, 20);
+        OS_STRING osString = _readPDFStringPart_title(nOffset, 20, pPdStruct);
 
         // qDebug("%llX", nOffset);
 
