@@ -356,7 +356,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize, 
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -368,7 +368,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset)
         quint8 nChar = read_uint8(nOffset);
 
         if (nChar == '/') {
-            result = _readPDFStringPart_const(nOffset);
+            result = _readPDFStringPart_const(nOffset, pPdStruct);
         } else if (nChar == '(') {
             result = _readPDFStringPart_str(nOffset);
         } else if (nChar == '<') {
@@ -405,7 +405,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset)
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -413,7 +413,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset)
 
     qint64 nSize = getSize() - nOffset;
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
         if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == ' ') || (nChar == '(')) {
@@ -577,9 +577,9 @@ QList<XBinary::MAPMODE> XPDF::getMapModesList()
 {
     QList<MAPMODE> listResult;
 
+    listResult.append(MAPMODE_DATA);
     listResult.append(MAPMODE_OBJECTS);
     listResult.append(MAPMODE_STREAMS);
-    listResult.append(MAPMODE_DATA);
 
     return listResult;
 }
@@ -589,7 +589,7 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
     XBinary::_MEMORY_MAP result = {};
 
     if (mapMode == MAPMODE_UNKNOWN) {
-        mapMode = MAPMODE_OBJECTS;  // Default mode
+        mapMode = MAPMODE_DATA;  // Default mode
     }
 
     if (mapMode == MAPMODE_OBJECTS) {
@@ -713,7 +713,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
             qint32 nCol = 0;
             qint32 nPartCount = 0;
             while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-                OS_STRING osStringPart = _readPDFStringPart(nOffset);
+                OS_STRING osStringPart = _readPDFStringPart(nOffset, pPdStruct);
 
                 if ((nPartCount < nPartLimit) || (nPartLimit == -1)) {
                     result.listParts.append(osStringPart.sString);
