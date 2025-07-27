@@ -394,7 +394,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
             result.sString = "]";
             result.nSize = 1;
         } else {
-            result = _readPDFStringPart_val(nOffset);
+            result = _readPDFStringPart_val(nOffset, pPdStruct);
         }
     }
 
@@ -507,7 +507,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset)
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -517,7 +517,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset)
 
     bool bSpace = false;
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
         if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == '/')) {
@@ -768,7 +768,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
 
                 if (nObjectOffset != -1) {
                     skipPDFString(&nObjectOffset);
-                    OS_STRING osLen = _readPDFStringPart_val(nObjectOffset);
+                    OS_STRING osLen = _readPDFStringPart_val(nObjectOffset, pPdStruct);
 
                     if (osLen.sString.toInt()) {
                         stream.nSize = osLen.sString.toInt();
