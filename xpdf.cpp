@@ -370,7 +370,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
         if (nChar == '/') {
             result = _readPDFStringPart_const(nOffset, pPdStruct);
         } else if (nChar == '(') {
-            result = _readPDFStringPart_str(nOffset);
+            result = _readPDFStringPart_str(nOffset, pPdStruct);
         } else if (nChar == '<') {
             if (nSize > 1) {
                 if (read_uint8(nOffset + 1) == '<') {
@@ -433,7 +433,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset, PDSTRUCT *pPdS
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -446,7 +446,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset)
     bool bUnicode = false;
     bool bBSlash = false;
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         if (!bUnicode) {
             quint8 nChar = read_uint8(nOffset + i);
 
