@@ -377,7 +377,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
                     result.sString = "<<";
                     result.nSize = 2;
                 } else {
-                    result = _readPDFStringPart_hex(nOffset);
+                    result = _readPDFStringPart_hex(nOffset, pPdStruct);
                 }
             }
         } else if (nChar == '>') {
@@ -547,7 +547,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStr
     return result;
 }
 
-XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset)
+XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     XBinary::OS_STRING result = {};
 
@@ -555,7 +555,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset)
 
     qint64 nSize = getSize() - nOffset;
 
-    for (qint64 i = 0; i < nSize; i++) {
+    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
         quint8 nChar = read_uint8(nOffset + i);
 
         if ((i == 0) && (nChar != '<')) {
