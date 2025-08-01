@@ -1051,7 +1051,7 @@ QString XPDF::typeIdToString(qint32 nType)
     return sResult;
 }
 
-QString XPDF::getHeaderCommentAsHex()
+QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
 {
     QString sResult;
 
@@ -1066,7 +1066,7 @@ QString XPDF::getHeaderCommentAsHex()
 
         QByteArray baData;
 
-        for (qint32 i = 0; i < 40; i++) {
+        for (qint32 i = 0; (i < 40) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
             quint8 nChar = read_uint8(nCurrentOffset + i);
 
             if ((nChar == 13) || (nChar == 10) || (nChar == 0)) {

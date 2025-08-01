@@ -108,7 +108,7 @@ public:
     virtual qint32 getType();
     virtual QString typeIdToString(qint32 nType);
 
-    QString getHeaderCommentAsHex();
+    QString getHeaderCommentAsHex(PDSTRUCT *pPdStruct);
 
     virtual QList<FPART> getFileParts(quint32 nFileParts, qint32 nLimit = -1, PDSTRUCT *pPdStruct = nullptr);
 };
