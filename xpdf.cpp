@@ -1105,7 +1105,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             record.nFileOffset = 0;
             record.nFileSize = osHeader.nSize;
             record.nVirtualAddress = -1;
-            record.sOriginalName = tr("Signature");
+            record.sName = tr("Signature");
 
             listResult.append(record);
         }
@@ -1125,7 +1125,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     record.nFileOffset = startxref.nXrefOffset;
                     record.nFileSize = startxref.nFooterOffset - startxref.nXrefOffset;
                     record.nVirtualAddress = -1;
-                    record.sOriginalName = QString("xref");
+                    record.sName = QString("xref");
 
                     listResult.append(record);
                 }
@@ -1146,7 +1146,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                 record.nFileOffset = startxref.nFooterOffset;
                 record.nFileSize = startxref.nFooterSize;
                 record.nVirtualAddress = -1;
-                record.sOriginalName = tr("Footer");
+                record.sName = tr("Footer");
 
                 listResult.append(record);
             }
@@ -1169,7 +1169,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                 record.nFileOffset = 0;
                 record.nFileSize = osHeader.nSize;
                 record.nVirtualAddress = -1;
-                record.sOriginalName = tr("Header");
+                record.sName = tr("Header");
 
                 listResult.append(record);
             }
@@ -1189,7 +1189,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         record.nFileOffset = 0;
         record.nFileSize = nMaxOffset;
         record.nVirtualAddress = -1;
-        record.sOriginalName = tr("Data");
+        record.sName = tr("Data");
 
         listResult.append(record);
     }
@@ -1208,7 +1208,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                 record.nFileOffset = object.nOffset;
                 record.nFileSize = object.nSize;
                 record.nVirtualAddress = -1;
-                record.sOriginalName = QString("%1 %2").arg(tr("Object"), QString::number(object.nID));
+                record.sName = QString("%1 %2").arg(tr("Object"), QString::number(object.nID));
 
                 listResult.append(record);
             }
@@ -1224,9 +1224,20 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     XBinary::FPART record = {};
                     record.nFileOffset = stream.nOffset;
                     record.nFileSize = stream.nSize;
-                    record.sOriginalName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
+                    record.sName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
                     record.filePart = XBinary::FILEPART_STREAM;
                     record.nVirtualAddress = -1;
+
+                    COMPRESS_METHOD compMethod = COMPRESS_METHOD_STORE;
+
+                    if (stream.nSize >= 6) {
+                        quint16 nHeader = read_uint16(record.nFileOffset);
+                        if ((nHeader == 0x5E78) || (nHeader == 0x9C78) || (nHeader == 0xDA78)) {
+                            compMethod = COMPRESS_METHOD_ZLIB;
+                        }
+                    }
+
+                    record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, compMethod);
 
                     listResult.append(record);
 
@@ -1244,7 +1255,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             record.nFileOffset = nMaxOffset;
             record.nFileSize = getSize() - nMaxOffset;
             record.nVirtualAddress = -1;
-            record.sOriginalName = tr("Overlay");
+            record.sName = tr("Overlay");
 
             listResult.append(record);
         }
