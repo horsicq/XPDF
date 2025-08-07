@@ -104,6 +104,7 @@ public:
 
     QList<XPART> getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
     static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+    static XVARIANT getFirstValueByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 
     virtual qint32 getType();
     virtual QString typeIdToString(qint32 nType);

@@ -933,6 +933,19 @@ qint32 XPDF::getObjectID(const QString &sString)
     return sString.section(" ", 0, 0).toInt();
 }
 
+XBinary::XVARIANT XPDF::getFirstValueByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct)
+{
+    XBinary::XVARIANT varResult;
+
+    QList<XVARIANT> listResult = getValuesByKey(pListObjects, sKey, pPdStruct);
+
+    if (listResult.count() > 0) {
+        varResult = listResult.at(0);
+    }
+
+    return varResult;
+}
+
 QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
 {
     QList<XPART> listResult;
@@ -1224,7 +1237,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     XBinary::FPART record = {};
                     record.nFileOffset = stream.nOffset;
                     record.nFileSize = stream.nSize;
-                    record.sName = QString("%1 %2").arg(tr("Stream"), QString::number(nStreamNumber));
+                    record.sName = QString("%1 obj (%2)").arg(tr("Stream"), QString::number(object.nID));
                     record.filePart = XBinary::FILEPART_STREAM;
                     record.nVirtualAddress = -1;
 
@@ -1233,6 +1246,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     if (stream.nSize >= 6) {
                         quint16 nHeader = read_uint16(record.nFileOffset);
                         if ((nHeader == 0x5E78) || (nHeader == 0x9C78) || (nHeader == 0xDA78)) {
+                            // qDebug() << xpart.listParts;
+
+                            // if (getFirstValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
+                            //     // TODO
+                            // }
                             compMethod = COMPRESS_METHOD_ZLIB;
                         }
                     }
