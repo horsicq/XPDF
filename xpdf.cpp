@@ -933,14 +933,42 @@ qint32 XPDF::getObjectID(const QString &sString)
     return sString.section(" ", 0, 0).toInt();
 }
 
-XBinary::XVARIANT XPDF::getFirstValueByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct)
+XBinary::XVARIANT XPDF::getFirstStringValueByKey(QList<QString> *pListStrings, const QString &sKey, PDSTRUCT *pPdStruct)
 {
     XBinary::XVARIANT varResult;
 
-    QList<XVARIANT> listResult = getValuesByKey(pListObjects, sKey, pPdStruct);
+    qint32 nNumberOfParts = pListStrings->count();
 
-    if (listResult.count() > 0) {
-        varResult = listResult.at(0);
+    for (qint32 j = 0; (j < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
+        QString sCurrentKey = pListStrings->at(j);
+
+        if (sCurrentKey == sKey) {
+            if ((j + 1) < nNumberOfParts) {
+                QString sValue = pListStrings->at(j + 1);
+                XVARIANT varValue;
+
+                if (sValue.toLongLong()) {
+                    varValue.varType = XBinary::VT_INT64;
+                    varValue.var = sValue.toLongLong();
+                } else if (_isDateTime(sValue)) {
+                    varValue.varType = XBinary::VT_DATETIME;
+                    varValue.var = _getDateTime(sValue);
+                } else if (_isString(sValue)) {
+                    varValue.varType = XBinary::VT_STRING;
+                    varValue.var = _getString(sValue);
+                } else if (_isHex(sValue)) {
+                    varValue.varType = XBinary::VT_HEX;
+                    varValue.var = _getHex(sValue);
+                } else {
+                    varValue.varType = XBinary::VT_VALUE;
+                    varValue.var = sValue;
+                }
+
+                if (!varValue.var.isNull()) {
+                    varResult = varValue;
+                }
+            }
+        }
     }
 
     return varResult;
@@ -1027,6 +1055,9 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const 
                     } else if (_isHex(sValue)) {
                         varValue.varType = XBinary::VT_HEX;
                         varValue.var = _getHex(sValue);
+                    } else {
+                        varValue.varType = XBinary::VT_VALUE;
+                        varValue.var = sValue;
                     }
 
                     if (!varValue.var.isNull()) {
@@ -1091,6 +1122,36 @@ QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
 
         sResult = baData.toHex();
     }
+
+    return sResult;
+}
+
+QString XPDF::getFilters(PDSTRUCT *pPdStruct)
+{
+    QString sResult;
+
+    QList<XPART> listParts = getParts(-1, pPdStruct);
+    QList<XBinary::XVARIANT> listValues = getValuesByKey(&listParts, "/Filter", pPdStruct);
+
+    qint32 nNumberOfValues = listValues.count();
+    for (qint32 i = 0; (i < nNumberOfValues) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+        QString sValue = listValues.at(i).var.toString();
+        if (!sValue.isEmpty()) {
+            if (!sResult.isEmpty()) {
+                sResult += ", ";
+            }
+            sResult += sValue;
+        }
+    }
+
+    return sResult;
+}
+
+QString XPDF::getInfo(PDSTRUCT *pPdStruct)
+{
+    QString sResult;
+
+    sResult = getFilters(pPdStruct);
 
     return sResult;
 }
@@ -1243,17 +1304,46 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                     COMPRESS_METHOD compMethod = COMPRESS_METHOD_STORE;
 
-                    if (stream.nSize >= 6) {
-                        quint16 nHeader = read_uint16(record.nFileOffset);
-                        if ((nHeader == 0x5E78) || (nHeader == 0x9C78) || (nHeader == 0xDA78)) {
-                            // qDebug() << xpart.listParts;
+                    QString sFilter = getFirstStringValueByKey(&(xpart.listParts), "/Filter", pPdStruct).var.toString();
 
-                            // if (getFirstValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
-                            //     // TODO
-                            // }
-                            compMethod = COMPRESS_METHOD_ZLIB;
+                    if (sFilter == "/FlateDecode") {
+                        // ZLIB
+                        compMethod = COMPRESS_METHOD_ZLIB;
+                    } else if (sFilter == "/DCTDecode") {
+                        // JPEG
+                        compMethod = COMPRESS_METHOD_STORE;
+                    } else {
+                        // TODO
+                    }
+
+                    if (sFilter != "") {
+                        if (getFirstStringValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
+                            qint32 nWidth = getFirstStringValueByKey(&(xpart.listParts), "/Width", pPdStruct).var.toInt();
+                            qint32 nHeight = getFirstStringValueByKey(&(xpart.listParts), "/Height", pPdStruct).var.toInt();
+                            qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), "/BitsPerComponent", pPdStruct).var.toInt();
+
+                            record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
+                            record.mapProperties.insert(FPART_PROP_NEEDCONVERT, true);
+                            record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
+                            record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
+                            record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
+                            record.mapProperties.insert(FPART_PROP_EXT, "png");
+                            record.mapProperties.insert(FPART_PROP_INFO, QString("%1 (%2 x %3) [%4]").arg(tr("Raw image data"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
                         }
                     }
+
+                    // qDebug() << "Filter:" << sFilter << xpart.listParts << record.sName;
+
+                    // if (stream.nSize >= 6) {
+                    //     quint16 nHeader = read_uint16(record.nFileOffset);
+                    //     if ((nHeader == 0x5E78) || (nHeader == 0x9C78) || (nHeader == 0xDA78)) {
+
+                    //         if (getFirstStringValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
+                    //             qDebug() << xpart.listParts << record.sName;
+                    //         }
+                    //         compMethod = COMPRESS_METHOD_ZLIB;
+                    //     }
+                    // }
 
                     record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, compMethod);
 

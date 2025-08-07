@@ -104,7 +104,7 @@ public:
 
     QList<XPART> getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
     static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
-    static XVARIANT getFirstValueByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
+    static XVARIANT getFirstStringValueByKey(QList<QString> *pListStrings, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 
     virtual qint32 getType();
     virtual QString typeIdToString(qint32 nType);
@@ -112,6 +112,9 @@ public:
     QString getHeaderCommentAsHex(PDSTRUCT *pPdStruct);
 
     virtual QList<FPART> getFileParts(quint32 nFileParts, qint32 nLimit = -1, PDSTRUCT *pPdStruct = nullptr);
+
+    QString getFilters(PDSTRUCT *pPdStruct = nullptr);
+    virtual QString getInfo(PDSTRUCT *pPdStruct = nullptr);
 };
 
 #endif  // XPDF_H
