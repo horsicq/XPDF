@@ -47,7 +47,7 @@ QString XPDF::getVersion()
 {
     QString sResult;
 
-    sResult = _readPDFString(5, 5, nullptr).sString;
+    sResult = _readPDFString(5, 3, nullptr).sString;
 
     return sResult;
 }
@@ -1302,18 +1302,26 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     record.filePart = XBinary::FILEPART_STREAM;
                     record.nVirtualAddress = -1;
 
-                    COMPRESS_METHOD compMethod = COMPRESS_METHOD_STORE;
-
                     QString sFilter = getFirstStringValueByKey(&(xpart.listParts), "/Filter", pPdStruct).var.toString();
 
                     if (sFilter == "/FlateDecode") {
                         // ZLIB
-                        compMethod = COMPRESS_METHOD_ZLIB;
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_ZLIB);
+                    } else if (sFilter == "/LZWDecode") {
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_LZW);
                     } else if (sFilter == "/DCTDecode") {
                         // JPEG
-                        compMethod = COMPRESS_METHOD_STORE;
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
+                    } else if (sFilter == "[") {
+#ifdef QT_DEBUG
+                        qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
+#endif
                     } else {
+#ifdef QT_DEBUG
+                        qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
+#endif
                         // TODO
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
                     }
 
                     if (sFilter != "") {
@@ -1323,7 +1331,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), "/BitsPerComponent", pPdStruct).var.toInt();
 
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
-                            record.mapProperties.insert(FPART_PROP_NEEDCONVERT, true);
+                            record.mapProperties.insert(FPART_PROP_FILETYPE_EXTRA, XBinary::FT_DATA);
                             record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
                             record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
                             record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
@@ -1345,7 +1353,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     //     }
                     // }
 
-                    record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, compMethod);
+
 
                     listResult.append(record);
 
