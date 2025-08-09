@@ -1336,7 +1336,9 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
                             record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
                             record.mapProperties.insert(FPART_PROP_EXT, "png");
-                            record.mapProperties.insert(FPART_PROP_INFO, QString("%1 (%2 x %3) [%4]").arg(tr("Raw image data"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
+                            record.mapProperties.insert(
+                                FPART_PROP_INFO, QString("%1 (%2 x %3) [%4]")
+                                                     .arg(tr("Raw image data"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
                         }
                     }
 
@@ -1352,8 +1354,6 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     //         compMethod = COMPRESS_METHOD_ZLIB;
                     //     }
                     // }
-
-
 
                     listResult.append(record);
 
