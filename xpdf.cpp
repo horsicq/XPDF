@@ -1308,7 +1308,9 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                         // ZLIB
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_ZLIB);
                     } else if (sFilter == "/LZWDecode") {
-                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_LZW);
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_LZW_PDF);
+                    } else if (sFilter == "/ASCII85Decode") {
+                        record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_ASCII85);
                     } else if (sFilter == "/DCTDecode") {
                         // JPEG
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
