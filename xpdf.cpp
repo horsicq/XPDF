@@ -131,7 +131,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
                 nCurrentOffset = find_ansiString(nCurrentOffset, (nOffset + nSize) - nCurrentOffset, " obj", pPdStruct);
 
                 if (nCurrentOffset != -1) {
-                    while (nCurrentOffset > 0) {
+                    while ((nCurrentOffset > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
                         quint8 _nChar = read_uint8(nCurrentOffset - 1);
 
                         // If not number and not space
