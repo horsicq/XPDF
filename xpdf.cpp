@@ -124,7 +124,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
             }
         } else if (_isComment(osString.sString)) {
             nCurrentOffset += osString.nSize;
-            skipPDFEnding(&nCurrentOffset);
+            skipPDFEnding(&nCurrentOffset, pPdStruct);
         } else {
             bool bContinue = false;
             if (bDeepScan) {
@@ -163,12 +163,12 @@ qint32 XPDF::skipPDFString(qint64 *pnOffset)
     return osString.nSize;
 }
 
-qint32 XPDF::skipPDFEnding(qint64 *pnOffset)
+qint32 XPDF::skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
     qint32 nOrigOffset = *pnOffset;
     qint64 nSize = getSize() - *pnOffset;
 
-    while (nSize > 0) {
+    while ((nSize > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
         quint8 nChar = read_uint8(*pnOffset);
         if (nChar == 10) {
             (*pnOffset)++;
@@ -318,7 +318,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *
 
     nOffset += result.nSize;
 
-    result.nSize += skipPDFEnding(&nOffset);
+    result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
 }
@@ -351,7 +351,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize, 
 
     nOffset += result.nSize;
 
-    result.nSize += skipPDFEnding(&nOffset);
+    result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
 }
@@ -400,7 +400,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
 
     nOffset += result.nSize;
     result.nSize += skipPDFSpace(&nOffset);
-    result.nSize += skipPDFEnding(&nOffset);
+    result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
 }
@@ -782,7 +782,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
 
             if (stream.nSize) {
                 nOffset += stream.nSize;
-                skipPDFEnding(&nOffset);
+                skipPDFEnding(&nOffset, pPdStruct);
 
                 result.listStreams.append(stream);
             }
@@ -1103,7 +1103,7 @@ QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
 
     OS_STRING osString = _readPDFString(nCurrentOffset, 100, nullptr);
     nCurrentOffset += osString.nSize;
-    skipPDFEnding(&nCurrentOffset);
+    skipPDFEnding(&nCurrentOffset, pPdStruct);
 
     if (read_uint8(nCurrentOffset) == '%') {
         nCurrentOffset++;

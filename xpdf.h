@@ -85,7 +85,7 @@ public:
     OS_STRING _readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStruct);
-    qint32 skipPDFEnding(qint64 *pnOffset);
+    qint32 skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct);
     qint32 skipPDFSpace(qint64 *pnOffset);
     qint32 skipPDFString(qint64 *pnOffset);
     XPART handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
