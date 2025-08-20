@@ -188,12 +188,12 @@ qint32 XPDF::skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct)
     return *pnOffset - nOrigOffset;
 }
 
-qint32 XPDF::skipPDFSpace(qint64 *pnOffset)
+qint32 XPDF::skipPDFSpace(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
     qint32 nOrigOffset = *pnOffset;
     qint64 nSize = getSize() - *pnOffset;
 
-    while (nSize > 0) {
+    while ((nSize > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
         quint8 nChar = read_uint8(*pnOffset);
         if (nChar == ' ') {
             (*pnOffset)++;
@@ -399,7 +399,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
     }
 
     nOffset += result.nSize;
-    result.nSize += skipPDFSpace(&nOffset);
+    result.nSize += skipPDFSpace(&nOffset, pPdStruct);
     result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
