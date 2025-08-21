@@ -155,9 +155,9 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
     return listResult;
 }
 
-qint32 XPDF::skipPDFString(qint64 *pnOffset)
+qint32 XPDF::skipPDFString(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
-    OS_STRING osString = _readPDFString(*pnOffset, 20, nullptr);
+    OS_STRING osString = _readPDFString(*pnOffset, 20, pPdStruct);
     *pnOffset += osString.nSize;
 
     return osString.nSize;
@@ -767,7 +767,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                 qint64 nObjectOffset = find_ansiString(nOffset, -1, sPattern, pPdStruct);
 
                 if (nObjectOffset != -1) {
-                    skipPDFString(&nObjectOffset);
+                    skipPDFString(&nObjectOffset, pPdStruct);
                     OS_STRING osLen = _readPDFStringPart_val(nObjectOffset, pPdStruct);
 
                     if (osLen.sString.toInt()) {

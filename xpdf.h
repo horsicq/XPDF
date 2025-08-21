@@ -87,7 +87,7 @@ public:
     OS_STRING _readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStruct);
     qint32 skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct);
     qint32 skipPDFSpace(qint64 *pnOffset, PDSTRUCT *pPdStruct);
-    qint32 skipPDFString(qint64 *pnOffset);
+    qint32 skipPDFString(qint64 *pnOffset, PDSTRUCT *pPdStruct);
     XPART handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDSTRUCT *pPdStruct);
     static bool _isObject(const QString &sString);
     static bool _isString(const QString &sString);
