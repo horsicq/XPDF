@@ -264,7 +264,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
         }
 
         QMapIterator<qint64, quint64> iterator(mapObjects);
-        while (iterator.hasNext()) {
+        while (iterator.hasNext() && XBinary::isPdStructNotCanceled(pPdStruct)) {
             iterator.next();
 
             OBJECT object;
