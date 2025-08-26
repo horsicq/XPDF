@@ -487,6 +487,11 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
                 bBSlash = true;
                 i++;
                 result.nSize += 2;
+            } else if (bBSlash && (nChar == 0x6e29)) {
+                bBSlash = false;
+                result.sString.append(')');
+                result.nSize++;
+                bEnd = true;
             } else {
                 if (bBSlash) {
                     bBSlash = false;
@@ -1130,7 +1135,7 @@ QString XPDF::getFilters(PDSTRUCT *pPdStruct)
 {
     QString sResult;
 
-    QList<XPART> listParts = getParts(-1, pPdStruct);
+    QList<XPART> listParts = getParts(100, pPdStruct); // TODO limit
     QList<XBinary::XVARIANT> listValues = getValuesByKey(&listParts, "/Filter", pPdStruct);
 
     qint32 nNumberOfValues = listValues.count();
