@@ -173,9 +173,9 @@ qint32 XPDF::skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 
     while ((cur < fileSize) && XBinary::isPdStructNotCanceled(pPdStruct)) {
         const quint8 ch = read_uint8(cur);
-        if (ch == 10) { // LF
+        if (ch == 10) {  // LF
             ++cur;
-        } else if (ch == 13) { // CR, optionally followed by LF
+        } else if (ch == 13) {  // CR, optionally followed by LF
             ++cur;
             if ((cur < fileSize) && (read_uint8(cur) == 10)) {
                 ++cur;
@@ -298,7 +298,7 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     if (nSize == -1) {
@@ -342,7 +342,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize, 
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     if (nSize == -1) {
@@ -386,7 +386,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     const qint64 remaining = nFileSize - nOffset;
@@ -442,10 +442,10 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset, PDSTRUCT *pPdS
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
-    const qint64 nEndOffset = nFileSize; // read until file end or stop char
+    const qint64 nEndOffset = nFileSize;  // read until file end or stop char
     bool isFirst = true;
     for (; (nOffset < nEndOffset) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset) {
         const quint8 nChar = read_uint8(nOffset);
@@ -476,7 +476,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     qint64 remaining = nFileSize - nOffset;
@@ -490,7 +490,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
     bool bBSlash = false;
 
     // Cursor-based loop
-    for (; (remaining > 0) && XBinary::isPdStructNotCanceled(pPdStruct); ) {
+    for (; (remaining > 0) && XBinary::isPdStructNotCanceled(pPdStruct);) {
         if (!bUnicode) {
             const quint8 ch = read_uint8(nOffset);
 
@@ -506,7 +506,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
                     if (remaining >= 3) {
                         if ((read_uint8(nOffset + 1) == 0xFE) && (read_uint8(nOffset + 2) == 0xFF)) {
                             bUnicode = true;
-                            result.nSize += 2; // count BOM bytes in size
+                            result.nSize += 2;  // count BOM bytes in size
                             nOffset += 2;
                             remaining -= 2;
                         }
@@ -538,7 +538,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
 
             if (((w >> 8) == ')') && (!bBSlash)) {
                 result.sString.append(')');
-                ++result.nSize; // only one byte of ')'
+                ++result.nSize;  // only one byte of ')'
                 bEnd = true;
             } else if (w == '\\') {
                 bBSlash = true;
@@ -546,7 +546,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
                 remaining -= 2;
                 result.nSize += 2;
                 continue;
-            } else if (bBSlash && (w == 0x6e29)) { // 'n' ')'
+            } else if (bBSlash && (w == 0x6e29)) {  // 'n' ')'
                 bBSlash = false;
                 result.sString.append(')');
                 ++result.nSize;
@@ -585,7 +585,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStr
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     qint64 remaining = nFileSize - nOffset;
@@ -633,7 +633,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStr
 
     const qint64 nFileSize = getSize();
     if (nOffset < 0 || nOffset >= nFileSize) {
-        return result; // Out of bounds
+        return result;  // Out of bounds
     }
 
     qint64 remaining = nFileSize - nOffset;
@@ -776,7 +776,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
 
         nOffset += osString.nSize;
 
-    if (_isObject(osString.sString)) {
+        if (_isObject(osString.sString)) {
             qint32 nObj = 0;
             qint32 nCol = 0;
             qint32 nPartCount = 0;
@@ -797,15 +797,15 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                     break;
                 }
 
-        if (osStringPart.sString == QLatin1String("<<")) {
+                if (osStringPart.sString == QLatin1String("<<")) {
                     ++nObj;
-        } else if (osStringPart.sString == QLatin1String(">>")) {
+                } else if (osStringPart.sString == QLatin1String(">>")) {
                     --nObj;
-        } else if (osStringPart.sString == QLatin1String("[")) {
+                } else if (osStringPart.sString == QLatin1String("[")) {
                     ++nCol;
-        } else if (osStringPart.sString == QLatin1String("]")) {
+                } else if (osStringPart.sString == QLatin1String("]")) {
                     --nCol;
-        } else if (osStringPart.sString == QLatin1String("/Length")) {
+                } else if (osStringPart.sString == QLatin1String("/Length")) {
                     bLength = true;
                 } else if (bLength) {
                     bLength = false;
@@ -850,7 +850,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                 skipPDFEnding(&nOffset, pPdStruct);
                 result.listStreams.append(stream);
             }
-    } else if (osString.sString == QLatin1String("endstream")) {
+        } else if (osString.sString == QLatin1String("endstream")) {
             // TODO
         } else if (_isEndObject(osString.sString)) {
             break;
@@ -868,8 +868,8 @@ bool XPDF::_isObject(const QString &sString)
 {
     // Fast check: last token equals "obj"
     int i = sString.size();
-    while (i > 0 && sString.at(i - 1) == QChar(' ')) --i; // trim right spaces
-    const int tokenLen = 3; // "obj"
+    while (i > 0 && sString.at(i - 1) == QChar(' ')) --i;  // trim right spaces
+    const int tokenLen = 3;                                // "obj"
     if (i < tokenLen) return false;
     // Ensure boundary before token is start or space
     const int start = i - tokenLen;
@@ -884,7 +884,7 @@ bool XPDF::_isString(const QString &sString)
 
     qint32 nSize = sString.size();
     if (nSize >= 2) {
-    if ((sString.at(0) == QChar('(')) && (sString.at(nSize - 1) == QChar(')'))) {
+        if ((sString.at(0) == QChar('(')) && (sString.at(nSize - 1) == QChar(')'))) {
             bResult = true;
         }
     }
@@ -914,7 +914,7 @@ bool XPDF::_isDateTime(const QString &sString)
 
     qint32 nSize = sString.size();
     if (nSize >= 18) {
-    if (sString.startsWith("(D:") && (sString.at(nSize - 1) == QChar(')'))) {
+        if (sString.startsWith("(D:") && (sString.at(nSize - 1) == QChar(')'))) {
             bResult = true;
         }
     }
@@ -930,8 +930,8 @@ bool XPDF::_isEndObject(const QString &sString)
     while (left < right && sString.at(left) == QChar(' ')) ++left;
     while (right > left && sString.at(right - 1) == QChar(' ')) --right;
     if (right - left != 6) return false;
-    return (sString.at(left) == QChar('e') && sString.at(left + 1) == QChar('n') && sString.at(left + 2) == QChar('d') &&
-            sString.at(left + 3) == QChar('o') && sString.at(left + 4) == QChar('b') && sString.at(left + 5) == QChar('j'));
+    return (sString.at(left) == QChar('e') && sString.at(left + 1) == QChar('n') && sString.at(left + 2) == QChar('d') && sString.at(left + 3) == QChar('o') &&
+            sString.at(left + 4) == QChar('b') && sString.at(left + 5) == QChar('j'));
 }
 
 bool XPDF::_isComment(const QString &sString)
@@ -1017,7 +1017,10 @@ qint32 XPDF::getObjectID(const QString &sString)
     bool neg = false;
     int i = 0;
     const int len = sString.size();
-    if (i < len && sString.at(i) == QChar('-')) { neg = true; ++i; }
+    if (i < len && sString.at(i) == QChar('-')) {
+        neg = true;
+        ++i;
+    }
     for (; i < len; ++i) {
         const QChar c = sString.at(i);
         if (c < QChar('0') || c > QChar('9')) break;
@@ -1224,7 +1227,7 @@ QString XPDF::getFilters(PDSTRUCT *pPdStruct)
 {
     QString sResult;
 
-    QList<XPART> listParts = getParts(100, pPdStruct); // TODO limit
+    QList<XPART> listParts = getParts(100, pPdStruct);  // TODO limit
     const QList<XBinary::XVARIANT> listValues = getValuesByKey(&listParts, QLatin1String("/Filter"), pPdStruct);
 
     QStringList filters;
