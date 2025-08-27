@@ -76,7 +76,7 @@ public:
     virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr);
 
     QList<STARTHREF> findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct);
-    QList<OBJECT> getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
+    QList<OBJECT> getObjectsFromStartxref(const STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
     QList<OBJECT> findObjects(qint64 nOffset, qint64 nSize, bool bDeepScan, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct);
     OS_STRING _readPDFStringPart_title(qint64 nOffset, qint64 nSize, PDSTRUCT *pPdStruct);

@@ -89,23 +89,25 @@ XBinary::MODE XPDF::getMode()
 
 QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepScan, PDSTRUCT *pPdStruct)
 {
+    const qint64 fileSize = getSize();
     if (nSize == -1) {
-        nSize = getSize() - nOffset;
+        nSize = fileSize - nOffset;
     }
 
     QList<XPDF::OBJECT> listResult;
 
     qint64 nCurrentOffset = nOffset;
+    const qint64 endBound = nOffset + nSize;
 
-    while (XBinary::isPdStructNotCanceled(pPdStruct) && (nCurrentOffset < nOffset + nSize)) {
-        OS_STRING osString = _readPDFString(nCurrentOffset, 100, pPdStruct);
+    while (XBinary::isPdStructNotCanceled(pPdStruct) && (nCurrentOffset < endBound)) {
+        const OS_STRING osString = _readPDFString(nCurrentOffset, 100, pPdStruct);
 
         if (_isObject(osString.sString)) {
-            quint64 nID = getObjectID(osString.sString);
-            qint64 nEndObjOffset = find_ansiString(nCurrentOffset + osString.nSize, -1, "endobj", pPdStruct);
+            const quint64 nID = getObjectID(osString.sString);
+            const qint64 nEndObjOffset = find_ansiString(nCurrentOffset + osString.nSize, -1, "endobj", pPdStruct);
 
             if (nEndObjOffset != -1) {
-                OS_STRING osEndObj = _readPDFString(nEndObjOffset, 100, pPdStruct);
+                const OS_STRING osEndObj = _readPDFString(nEndObjOffset, 100, pPdStruct);
 
                 if (_isEndObject(osEndObj.sString)) {
                     OBJECT record = {};
@@ -128,18 +130,19 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
         } else {
             bool bContinue = false;
             if (bDeepScan) {
-                nCurrentOffset = find_ansiString(nCurrentOffset, (nOffset + nSize) - nCurrentOffset, " obj", pPdStruct);
+                const qint64 remain = endBound - nCurrentOffset;
+                nCurrentOffset = find_ansiString(nCurrentOffset, remain, " obj", pPdStruct);
 
                 if (nCurrentOffset != -1) {
                     while ((nCurrentOffset > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
-                        quint8 _nChar = read_uint8(nCurrentOffset - 1);
+                        const quint8 _nChar = read_uint8(nCurrentOffset - 1);
 
                         // If not number and not space
                         if (!(((_nChar >= '0') && (_nChar <= '9')) || (_nChar == ' '))) {
                             break;
                         }
 
-                        nCurrentOffset--;
+                        --nCurrentOffset;
                     }
 
                     bContinue = true;
@@ -157,64 +160,62 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
 
 qint32 XPDF::skipPDFString(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
-    OS_STRING osString = _readPDFString(*pnOffset, 20, pPdStruct);
-    *pnOffset += osString.nSize;
-
-    return osString.nSize;
+    const qint32 n = _readPDFString(*pnOffset, 20, pPdStruct).nSize;
+    *pnOffset += n;
+    return n;
 }
 
 qint32 XPDF::skipPDFEnding(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
-    qint32 nOrigOffset = *pnOffset;
-    qint64 nSize = getSize() - *pnOffset;
+    const qint64 start = *pnOffset;
+    const qint64 fileSize = getSize();
+    qint64 cur = *pnOffset;
 
-    while ((nSize > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
-        quint8 nChar = read_uint8(*pnOffset);
-        if (nChar == 10) {
-            (*pnOffset)++;
-            nSize--;
-        } else if ((nSize > 1) && (nChar == 13)) {
-            (*pnOffset)++;
-            nSize--;
-            if (read_uint8(*pnOffset) == 10) {
-                (*pnOffset)++;
-                nSize--;
+    while ((cur < fileSize) && XBinary::isPdStructNotCanceled(pPdStruct)) {
+        const quint8 ch = read_uint8(cur);
+        if (ch == 10) { // LF
+            ++cur;
+        } else if (ch == 13) { // CR, optionally followed by LF
+            ++cur;
+            if ((cur < fileSize) && (read_uint8(cur) == 10)) {
+                ++cur;
             }
         } else {
             break;
         }
     }
 
-    return *pnOffset - nOrigOffset;
+    *pnOffset = cur;
+    return static_cast<qint32>(cur - start);
 }
 
 qint32 XPDF::skipPDFSpace(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 {
-    qint32 nOrigOffset = *pnOffset;
-    qint64 nSize = getSize() - *pnOffset;
+    const qint64 start = *pnOffset;
+    const qint64 fileSize = getSize();
+    qint64 cur = *pnOffset;
 
-    while ((nSize > 0) && XBinary::isPdStructNotCanceled(pPdStruct)) {
-        quint8 nChar = read_uint8(*pnOffset);
-        if (nChar == ' ') {
-            (*pnOffset)++;
-            nSize--;
+    while ((cur < fileSize) && XBinary::isPdStructNotCanceled(pPdStruct)) {
+        if (read_uint8(cur) == ' ') {
+            ++cur;
         } else {
             break;
         }
     }
 
-    return *pnOffset - nOrigOffset;
+    *pnOffset = cur;
+    return static_cast<qint32>(cur - start);
 }
 
-QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUCT *pPdStruct)
+QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, PDSTRUCT *pPdStruct)
 {
     QList<XPDF::OBJECT> listResult;
 
-    qint64 nTotalSize = getSize();
+    const qint64 nTotalSize = getSize();
 
     qint64 nCurrentOffset = pStartxref->nXrefOffset;
 
-    OS_STRING osStringHref = _readPDFString(nCurrentOffset, 20, pPdStruct);
+    const OS_STRING osStringHref = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
     if (_isXref(osStringHref.sString)) {
         nCurrentOffset += osStringHref.nSize;
@@ -222,26 +223,25 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
         QMap<qint64, quint64> mapObjects;
 
         while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-            OS_STRING osSection = _readPDFString(nCurrentOffset, 20, pPdStruct);
+            const OS_STRING osSection = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
-            if (osSection.sString != "") {
-                quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
-                quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
+            if (!osSection.sString.isEmpty()) {
+                const quint64 nID = osSection.sString.section(" ", 0, 0).toULongLong();
+                const quint64 nNumberOfObjects = osSection.sString.section(" ", 1, 1).toULongLong();
 
                 nCurrentOffset += osSection.nSize;
 
                 if (nNumberOfObjects) {
-                    qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
-                    XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
+                    const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
+                    XBinary::setPdStructInit(pPdStruct, _nFreeIndex, static_cast<qint32>(nNumberOfObjects));
 
-                    for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-                        OS_STRING osObject = _readPDFString(nCurrentOffset, 20, pPdStruct);
+                    for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+                        const OS_STRING osObject = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
                         if (osObject.sString.section(" ", 2, 2) == "n") {
-                            qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
+                            const qint64 nObjectOffset = osObject.sString.section(" ", 0, 0).toULongLong();
 
                             // OS_STRING osTitle = _readPDFStringPart_title(nObjectOffset, 20);
-
                             // if (_isObject(osTitle.sString)) {
                             //      mapObjects.insert(nObjectOffset, nID + j);
                             // }
@@ -275,9 +275,9 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(STARTHREF *pStartxref, PDSTRUC
             listResult.append(object);
         }
 
-        qint32 nNumberOfObjects = listResult.count();
+        const qint32 nNumberOfObjects = listResult.count();
         // Calculate sizes based on consecutive offsets
-        for (qint32 i = 0; (i < nNumberOfObjects - 1) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+        for (qint32 i = 0; (i < nNumberOfObjects - 1) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             listResult[i].nSize = listResult[i + 1].nOffset - listResult[i].nOffset;
         }
 
@@ -296,28 +296,39 @@ XBinary::OS_STRING XPDF::_readPDFString(qint64 nOffset, qint64 nSize, PDSTRUCT *
 
     result.nOffset = nOffset;
 
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
+
     if (nSize == -1) {
-        nSize = getSize() - nOffset;
+        nSize = nFileSize - nOffset;
     }
 
-    if (nOffset + nSize > getSize()) {
-        nSize = getSize() - nOffset;
+    // Clamp read size to file end
+    if (nOffset + nSize > nFileSize) {
+        nSize = nFileSize - nOffset;
     }
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        quint8 nChar = read_uint8(nOffset + i);
+    if (nSize <= 0) {
+        return result;
+    }
 
+    const qint64 nStartOffset = nOffset;
+    const qint64 nEndOffset = nOffset + nSize;
+    for (; (nOffset < nEndOffset) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset) {
+        const quint8 nChar = read_uint8(nOffset);
+        // Stop on NUL, CR, or LF
         if ((nChar == 0) || (nChar == 13) || (nChar == 10)) {
             break;
         }
-
-        result.nSize++;
-
-        result.sString.append((char)nChar);
+        result.sString.append(QLatin1Char(static_cast<char>(nChar)));
     }
 
-    nOffset += result.nSize;
+    // Bytes consumed for this string part
+    result.nSize = nOffset - nStartOffset;
 
+    // Include any trailing line ending in total size
     result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
@@ -329,28 +340,39 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_title(qint64 nOffset, qint64 nSize, 
 
     result.nOffset = nOffset;
 
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
+
     if (nSize == -1) {
-        nSize = getSize() - nOffset;
+        nSize = nFileSize - nOffset;
     }
 
-    if (nOffset + nSize > getSize()) {
-        nSize = getSize() - nOffset;
+    // Clamp to file size
+    if (nOffset + nSize > nFileSize) {
+        nSize = nFileSize - nOffset;
     }
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        quint8 nChar = read_uint8(nOffset + i);
+    if (nSize <= 0) {
+        return result;
+    }
 
+    const qint64 nStartOffset = nOffset;
+    const qint64 nEndOffset = nOffset + nSize;
+    for (; (nOffset < nEndOffset) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset) {
+        const quint8 nChar = read_uint8(nOffset);
+        // Stop on NUL, CR, LF, or '<'
         if ((nChar == 0) || (nChar == 13) || (nChar == 10) || (nChar == '<')) {
             break;
         }
-
-        result.nSize++;
-
-        result.sString.append((char)nChar);
+        result.sString.append(QLatin1Char(static_cast<char>(nChar)));
     }
 
-    nOffset += result.nSize;
+    // bytes consumed for the title part
+    result.nSize = nOffset - nStartOffset;
 
+    // Include any trailing line ending in total size
     result.nSize += skipPDFEnding(&nOffset, pPdStruct);
 
     return result;
@@ -362,42 +384,49 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
 
     result.nOffset = nOffset;
 
-    qint64 nSize = getSize() - nOffset;
-
-    if (nSize > 0) {
-        quint8 nChar = read_uint8(nOffset);
-
-        if (nChar == '/') {
-            result = _readPDFStringPart_const(nOffset, pPdStruct);
-        } else if (nChar == '(') {
-            result = _readPDFStringPart_str(nOffset, pPdStruct);
-        } else if (nChar == '<') {
-            if (nSize > 1) {
-                if (read_uint8(nOffset + 1) == '<') {
-                    result.sString = "<<";
-                    result.nSize = 2;
-                } else {
-                    result = _readPDFStringPart_hex(nOffset, pPdStruct);
-                }
-            }
-        } else if (nChar == '>') {
-            if (nSize > 1) {
-                if (read_uint8(nOffset + 1) == '>') {
-                    result.sString = ">>";
-                    result.nSize = 2;
-                }
-            }
-        } else if (nChar == '[') {
-            result.sString = "[";
-            result.nSize = 1;
-        } else if (nChar == ']') {
-            result.sString = "]";
-            result.nSize = 1;
-        } else {
-            result = _readPDFStringPart_val(nOffset, pPdStruct);
-        }
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
     }
 
+    const qint64 remaining = nFileSize - nOffset;
+    if (remaining <= 0) {
+        return result;
+    }
+
+    const quint8 nChar = read_uint8(nOffset);
+
+    if (nChar == '/') {
+        result = _readPDFStringPart_const(nOffset, pPdStruct);
+    } else if (nChar == '(') {
+        result = _readPDFStringPart_str(nOffset, pPdStruct);
+    } else if (nChar == '<') {
+        if (remaining > 1) {
+            if (read_uint8(nOffset + 1) == '<') {
+                result.sString = "<<";
+                result.nSize = 2;
+            } else {
+                result = _readPDFStringPart_hex(nOffset, pPdStruct);
+            }
+        }
+    } else if (nChar == '>') {
+        if (remaining > 1) {
+            if (read_uint8(nOffset + 1) == '>') {
+                result.sString = ">>";
+                result.nSize = 2;
+            }
+        }
+    } else if (nChar == '[') {
+        result.sString = "[";
+        result.nSize = 1;
+    } else if (nChar == ']') {
+        result.sString = "]";
+        result.nSize = 1;
+    } else {
+        result = _readPDFStringPart_val(nOffset, pPdStruct);
+    }
+
+    // Post-consume trailing spaces and line endings
     nOffset += result.nSize;
     result.nSize += skipPDFSpace(&nOffset, pPdStruct);
     result.nSize += skipPDFEnding(&nOffset, pPdStruct);
@@ -411,23 +440,29 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_const(qint64 nOffset, PDSTRUCT *pPdS
 
     result.nOffset = nOffset;
 
-    qint64 nSize = getSize() - nOffset;
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        quint8 nChar = read_uint8(nOffset + i);
+    const qint64 nEndOffset = nFileSize; // read until file end or stop char
+    bool isFirst = true;
+    for (; (nOffset < nEndOffset) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset) {
+        const quint8 nChar = read_uint8(nOffset);
 
+        // Stop on control/terminators or structural delimiters
         if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == ' ') || (nChar == '(')) {
             break;
         }
 
-        if (i > 0) {
-            if (nChar == '/') {
-                break;
-            }
+        // Subsequent '/' starts a new token; include only the very first '/'
+        if (!isFirst && (nChar == '/')) {
+            break;
         }
 
+        result.sString.append(QLatin1Char(static_cast<char>(nChar)));
         result.nSize++;
-        result.sString.append((char)nChar);
+        isFirst = false;
     }
 
     return result;
@@ -439,67 +474,97 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
 
     result.nOffset = nOffset;
 
-    qint64 nSize = getSize() - nOffset;
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
+
+    qint64 remaining = nFileSize - nOffset;
+    if (remaining <= 0) {
+        return result;
+    }
 
     bool bStart = false;
     bool bEnd = false;
     bool bUnicode = false;
     bool bBSlash = false;
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+    // Cursor-based loop
+    for (; (remaining > 0) && XBinary::isPdStructNotCanceled(pPdStruct); ) {
         if (!bUnicode) {
-            quint8 nChar = read_uint8(nOffset + i);
+            const quint8 ch = read_uint8(nOffset);
 
-            if ((nChar == 0) || (nChar == 10) || (nChar == 13)) {
+            // Stop on NUL, LF, CR
+            if ((ch == 0) || (ch == 10) || (ch == 13)) {
                 break;
             }
 
-            if ((i == 0) && (nChar == '(')) {
-                bStart = true;
-                if (nSize >= 3) {
-                    if ((read_uint8(nOffset + 1) == 0xFE) && (read_uint8(nOffset + 2) == 0xFF)) {
-                        bUnicode = true;
-                        result.nSize += 2;
-                        i += 2;
+            if (!bStart) {
+                if (ch == '(') {
+                    bStart = true;
+                    // Check UTF-16BE BOM after '('
+                    if (remaining >= 3) {
+                        if ((read_uint8(nOffset + 1) == 0xFE) && (read_uint8(nOffset + 2) == 0xFF)) {
+                            bUnicode = true;
+                            result.nSize += 2; // count BOM bytes in size
+                            nOffset += 2;
+                            remaining -= 2;
+                        }
                     }
+                    result.sString.append('(');
+                } else {
+                    // If first char isn't '(', treat as plain char (legacy behavior)
+                    if (bBSlash) {
+                        bBSlash = false;
+                    }
+                    result.sString.append(QLatin1Char(static_cast<char>(ch)));
                 }
-                result.sString.append('(');
-            } else if ((nChar == ')') && (!bBSlash)) {
+            } else if ((ch == ')') && (!bBSlash)) {
                 result.sString.append(')');
                 bEnd = true;
-            } else if (nChar == '\\') {
+            } else if (ch == '\\') {
                 bBSlash = true;
             } else {
                 if (bBSlash) {
                     bBSlash = false;
                 }
-                result.sString.append((char)nChar);
+                result.sString.append(QLatin1Char(static_cast<char>(ch)));
             }
-            result.nSize++;
-        } else if (nSize - i >= 2) {
-            quint16 nChar = read_uint16(nOffset + i, true);
+            ++result.nSize;
+            ++nOffset;
+            --remaining;
+        } else if (remaining >= 2) {
+            const quint16 w = read_uint16(nOffset, true);
 
-            if (((nChar >> 8) == ')') && (!bBSlash)) {
+            if (((w >> 8) == ')') && (!bBSlash)) {
                 result.sString.append(')');
-                result.nSize++;
+                ++result.nSize; // only one byte of ')'
                 bEnd = true;
-            } else if (nChar == '\\') {
+            } else if (w == '\\') {
                 bBSlash = true;
-                i++;
+                nOffset += 2;
+                remaining -= 2;
                 result.nSize += 2;
-            } else if (bBSlash && (nChar == 0x6e29)) {
+                continue;
+            } else if (bBSlash && (w == 0x6e29)) { // 'n' ')'
                 bBSlash = false;
                 result.sString.append(')');
-                result.nSize++;
+                ++result.nSize;
                 bEnd = true;
             } else {
                 if (bBSlash) {
                     bBSlash = false;
                 }
-                result.sString.append(QChar(nChar));
-                i++;
+                result.sString.append(QChar(w));
+                nOffset += 2;
+                remaining -= 2;
                 result.nSize += 2;
+                continue;
             }
+
+            // advance by one byte for the cases above where we consumed a single char
+            ++nOffset;
+            --remaining;
         } else {
             break;
         }
@@ -518,30 +583,38 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStr
 
     result.nOffset = nOffset;
 
-    qint64 nSize = getSize() - nOffset;
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
+
+    qint64 remaining = nFileSize - nOffset;
+    if (remaining <= 0) {
+        return result;
+    }
 
     bool bSpace = false;
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        quint8 nChar = read_uint8(nOffset + i);
+    for (; (remaining > 0) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset, --remaining) {
+        const quint8 ch = read_uint8(nOffset);
 
-        if ((nChar == 0) || (nChar == 10) || (nChar == 13) || (nChar == '[') || (nChar == ']') || (nChar == '<') || (nChar == '>') || (nChar == '/')) {
+        if ((ch == 0) || (ch == 10) || (ch == 13) || (ch == '[') || (ch == ']') || (ch == '<') || (ch == '>') || (ch == '/')) {
             break;
         }
 
-        result.nSize++;
+        ++result.nSize;
 
-        if (nChar == ' ') {
+        if (ch == ' ') {
             bSpace = true;
             break;
         }
 
-        result.sString.append((char)nChar);
+        result.sString.append(QLatin1Char(static_cast<char>(ch)));
     }
 
     if (bSpace) {
-        if ((nSize - result.nSize) >= 3) {
-            QString sSuffix = read_ansiString(nOffset + result.nSize, 3);
+        if (remaining >= 3) {
+            const QString sSuffix = read_ansiString(nOffset + result.nSize, 3);
             if (sSuffix == "0 R") {
                 result.sString.append(" " + sSuffix);
                 result.nSize += 3;
@@ -558,19 +631,28 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStr
 
     result.nOffset = nOffset;
 
-    qint64 nSize = getSize() - nOffset;
+    const qint64 nFileSize = getSize();
+    if (nOffset < 0 || nOffset >= nFileSize) {
+        return result; // Out of bounds
+    }
 
-    for (qint64 i = 0; (i < nSize) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        quint8 nChar = read_uint8(nOffset + i);
+    qint64 remaining = nFileSize - nOffset;
+    if (remaining <= 0) {
+        return result;
+    }
 
-        if ((i == 0) && (nChar != '<')) {
-            break;
-        }
+    // First byte must be '<'
+    const quint8 first = read_uint8(nOffset);
+    if (first != '<') {
+        return result;
+    }
 
-        result.nSize++;
-        result.sString.append((char)nChar);
-
-        if (nChar == '>') {
+    // Cursor-based copy until '>' inclusive
+    for (; (remaining > 0) && XBinary::isPdStructNotCanceled(pPdStruct); ++nOffset, --remaining) {
+        const quint8 ch = read_uint8(nOffset);
+        result.sString.append(QLatin1Char(static_cast<char>(ch)));
+        ++result.nSize;
+        if (ch == '>') {
             break;
         }
     }
@@ -612,70 +694,61 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     QList<XPDF::STARTHREF> listResult;
 
+    const qint64 nFileSize = getSize();
+
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-        qint64 nStartXref = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // \n \r
+        const qint64 nStartXref = find_signature(nOffset, -1, "'startxref'", nullptr, pPdStruct);  // \n \r
+        if (nStartXref == -1) {
+            break;
+        }
 
-        if (nStartXref != -1) {
-            qint64 nCurrent = nStartXref;
+        qint64 nCurrent = nStartXref;
 
-            OS_STRING osStartXref = _readPDFString(nCurrent, 20, pPdStruct);
+        OS_STRING osStartXref = _readPDFString(nCurrent, 20, pPdStruct);
+        nCurrent += osStartXref.nSize;
 
-            nCurrent += osStartXref.nSize;
+        OS_STRING osOffset = _readPDFString(nCurrent, 20, pPdStruct);
+        const qint64 targetOffset = osOffset.sString.toLongLong();
 
-            OS_STRING osOffset = _readPDFString(nCurrent, 20, pPdStruct);
+        OS_STRING osHref = _readPDFString(targetOffset, 20, pPdStruct);
+        const bool bIsXref = _isXref(osHref.sString);
+        const bool bIsObject = _isObject(osHref.sString);
 
-            qint64 _nOffset = osOffset.sString.toLongLong();
+        if ((bIsXref || bIsObject) && (targetOffset < nCurrent)) {
+            nCurrent += osOffset.nSize;
 
-            OS_STRING osHref = _readPDFString(_nOffset, 20, pPdStruct);
+            OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
+            QString footerHead = osEnd.sString;
+            footerHead.resize(5, QChar(' '));
 
-            bool bIsXref = _isXref(osHref.sString);
-            bool bIsObject = _isObject(osHref.sString);
+            if (footerHead == "%%EOF") {
+                nCurrent += 5;
 
-            if (bIsXref || bIsObject) {
-                if (_nOffset < nCurrent) {
-                    nCurrent += osOffset.nSize;
+                // Skip optional CR and LF, bounds-checked
+                if ((nCurrent < nFileSize) && (read_uint8(nCurrent) == 13)) {
+                    ++nCurrent;
+                }
+                if ((nCurrent < nFileSize) && (read_uint8(nCurrent) == 10)) {
+                    ++nCurrent;
+                }
 
-                    OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
+                STARTHREF record = {};
+                record.nXrefOffset = targetOffset;
+                record.nFooterOffset = nStartXref;
+                record.nFooterSize = nCurrent - nStartXref;
+                record.bIsObject = bIsObject;
+                record.bIsXref = bIsXref;
+                listResult.append(record);
 
-                    QString _sEndOfFile = osEnd.sString;
+                if (osEnd.sString.size() != 5) {
+                    break;
+                }
 
-                    _sEndOfFile.resize(5, QChar(' '));
-
-                    if (_sEndOfFile == "%%EOF") {
-                        nCurrent += 5;
-
-                        if (_isOffsetValid(nCurrent) && (read_uint8(nCurrent) == 13)) {
-                            nCurrent++;  // Skip \r
-                        }
-
-                        if (_isOffsetValid(nCurrent) && (read_uint8(nCurrent) == 10)) {
-                            nCurrent++;  // Skip \n
-                        }
-
-                        STARTHREF record = {};
-
-                        record.nXrefOffset = _nOffset;
-                        record.nFooterOffset = nStartXref;
-                        record.nFooterSize = nCurrent - nStartXref;
-                        record.bIsObject = bIsObject;
-                        record.bIsXref = bIsXref;
-
-                        listResult.append(record);
-
-                        if (osEnd.sString.size() != 5) {
-                            break;
-                        }
-
-                        OS_STRING osAppend = _readPDFString(nCurrent, 20, pPdStruct);
-
-                        if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString)) && (!_isXref(osAppend.sString))) {
-                            break;  // No append
-                        }
-                    }
+                OS_STRING osAppend = _readPDFString(nCurrent, 20, pPdStruct);
+                if ((!_isObject(osAppend.sString)) && (!_isComment(osAppend.sString)) && (!_isXref(osAppend.sString))) {
+                    break;  // No append
                 }
             }
-        } else {
-            break;
         }
 
         nOffset = nStartXref + 10;  // Get the last
@@ -694,60 +767,45 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
     bool bLength = false;
 
     while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-        // TODO Read Object
         bool bStop = false;
-        OS_STRING osString = _readPDFStringPart_title(nOffset, 20, pPdStruct);
-
-        // qDebug("%llX", nOffset);
+        const OS_STRING osString = _readPDFStringPart_title(nOffset, 20, pPdStruct);
 
         if (result.nID == 0) {
             result.nID = getObjectID(osString.sString);
         }
-        // #ifdef QT_DEBUG
-        //         qDebug(">%s", osString.sString.toUtf8().data());
-        //         bool bShowDebug = false;
-        //         if (osString.sString == "16037 0 obj") {
-        //             bShowDebug = true;
-        //             qDebug("endobj");
-        //         }
-        // #endif
+
         nOffset += osString.nSize;
 
-        if (_isObject(osString.sString)) {
+    if (_isObject(osString.sString)) {
             qint32 nObj = 0;
             qint32 nCol = 0;
             qint32 nPartCount = 0;
             while (XBinary::isPdStructNotCanceled(pPdStruct)) {
-                OS_STRING osStringPart = _readPDFStringPart(nOffset, pPdStruct);
+                const OS_STRING osStringPart = _readPDFStringPart(nOffset, pPdStruct);
 
                 if ((nPartCount < nPartLimit) || (nPartLimit == -1)) {
                     result.listParts.append(osStringPart.sString);
-                    nPartCount++;
+                    ++nPartCount;
                 } else {
                     bStop = true;
                     break;
                 }
 
-                // #ifdef QT_DEBUG
-                //                 if (bShowDebug) {
-                //                     qDebug("#%s", osStringPart.sString.toUtf8().data());
-                //                 }
-                // #endif
                 nOffset += osStringPart.nSize;
 
-                if (osStringPart.sString == "") {
+                if (osStringPart.sString.isEmpty()) {
                     break;
                 }
 
-                if (osStringPart.sString == "<<") {
-                    nObj++;
-                } else if (osStringPart.sString == ">>") {
-                    nObj--;
-                } else if (osStringPart.sString == "[") {
-                    nCol++;
-                } else if (osStringPart.sString == "]") {
-                    nCol--;
-                } else if (osStringPart.sString == "/Length") {
+        if (osStringPart.sString == QLatin1String("<<")) {
+                    ++nObj;
+        } else if (osStringPart.sString == QLatin1String(">>")) {
+                    --nObj;
+        } else if (osStringPart.sString == QLatin1String("[")) {
+                    ++nCol;
+        } else if (osStringPart.sString == QLatin1String("]")) {
+                    --nCol;
+        } else if (osStringPart.sString == QLatin1String("/Length")) {
                     bLength = true;
                 } else if (bLength) {
                     bLength = false;
@@ -762,18 +820,20 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
             if (bStop) {
                 break;
             }
-        } else if (osString.sString == "stream") {
+        } else if (osString.sString == QLatin1String("stream")) {
             STREAM stream = {};
             stream.nOffset = nOffset;
             if (sLength.toInt()) {
                 stream.nSize = sLength.toInt();
-            } else if (sLength.section(" ", 2, 2) == "R") {
-                QString sPattern = sLength.replace("R", "obj");
-                qint64 nObjectOffset = find_ansiString(nOffset, -1, sPattern, pPdStruct);
+            } else if (sLength.section(" ", 2, 2) == QLatin1String("R")) {
+                QString sPattern = sLength;
+                sPattern.replace("R", "obj");
+                const qint64 nObjectOffset = find_ansiString(nOffset, -1, sPattern, pPdStruct);
 
                 if (nObjectOffset != -1) {
-                    skipPDFString(&nObjectOffset, pPdStruct);
-                    OS_STRING osLen = _readPDFStringPart_val(nObjectOffset, pPdStruct);
+                    qint64 tmp = nObjectOffset;
+                    skipPDFString(&tmp, pPdStruct);
+                    const OS_STRING osLen = _readPDFStringPart_val(tmp, pPdStruct);
 
                     if (osLen.sString.toInt()) {
                         stream.nSize = osLen.sString.toInt();
@@ -788,14 +848,13 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
             if (stream.nSize) {
                 nOffset += stream.nSize;
                 skipPDFEnding(&nOffset, pPdStruct);
-
                 result.listStreams.append(stream);
             }
-        } else if (osString.sString == "endstream") {
+    } else if (osString.sString == QLatin1String("endstream")) {
             // TODO
         } else if (_isEndObject(osString.sString)) {
             break;
-        } else if (osString.sString == "") {
+        } else if (osString.sString.isEmpty()) {
             break;
         }
     }
@@ -807,7 +866,16 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
 
 bool XPDF::_isObject(const QString &sString)
 {
-    return (sString.section(" ", 2, 2) == "obj");
+    // Fast check: last token equals "obj"
+    int i = sString.size();
+    while (i > 0 && sString.at(i - 1) == QChar(' ')) --i; // trim right spaces
+    const int tokenLen = 3; // "obj"
+    if (i < tokenLen) return false;
+    // Ensure boundary before token is start or space
+    const int start = i - tokenLen;
+    if (!((start == 0) || (sString.at(start - 1) == QChar(' ')))) return false;
+    // Compare without allocating
+    return (sString.at(start) == QChar('o') && sString.at(start + 1) == QChar('b') && sString.at(start + 2) == QChar('j'));
 }
 
 bool XPDF::_isString(const QString &sString)
@@ -816,7 +884,7 @@ bool XPDF::_isString(const QString &sString)
 
     qint32 nSize = sString.size();
     if (nSize >= 2) {
-        if ((sString.at(0) == QChar('(')) && (sString.at(nSize - 1) == QChar(')'))) {
+    if ((sString.at(0) == QChar('(')) && (sString.at(nSize - 1) == QChar(')'))) {
             bResult = true;
         }
     }
@@ -846,7 +914,7 @@ bool XPDF::_isDateTime(const QString &sString)
 
     qint32 nSize = sString.size();
     if (nSize >= 18) {
-        if ((sString.mid(0, 3) == QString("(D:")) && (sString.at(nSize - 1) == QChar(')'))) {
+    if (sString.startsWith("(D:") && (sString.at(nSize - 1) == QChar(')'))) {
             bResult = true;
         }
     }
@@ -856,14 +924,21 @@ bool XPDF::_isDateTime(const QString &sString)
 
 bool XPDF::_isEndObject(const QString &sString)
 {
-    return (sString.trimmed() == "endobj");
+    // Compare against "endobj" ignoring surrounding spaces without allocating
+    int left = 0;
+    int right = sString.size();
+    while (left < right && sString.at(left) == QChar(' ')) ++left;
+    while (right > left && sString.at(right - 1) == QChar(' ')) --right;
+    if (right - left != 6) return false;
+    return (sString.at(left) == QChar('e') && sString.at(left + 1) == QChar('n') && sString.at(left + 2) == QChar('d') &&
+            sString.at(left + 3) == QChar('o') && sString.at(left + 4) == QChar('b') && sString.at(left + 5) == QChar('j'));
 }
 
 bool XPDF::_isComment(const QString &sString)
 {
     bool bResult = false;
 
-    if (sString.size() > 0) {
+    if (!sString.isEmpty()) {
         bResult = (sString.at(0) == QChar('%'));
     }
 
@@ -874,8 +949,12 @@ bool XPDF::_isXref(const QString &sString)
 {
     bool bResult = false;
 
-    if (sString.size() > 0) {
-        bResult = (sString.section(" ", 0, 0) == "xref");
+    if (!sString.isEmpty()) {
+        // Fast path: check prefix "xref" and boundary
+        const int tlen = 4;
+        if (sString.size() >= tlen && sString.at(0) == QChar('x') && sString.at(1) == QChar('r') && sString.at(2) == QChar('e') && sString.at(3) == QChar('f')) {
+            bResult = (sString.size() == tlen) || (sString.at(4) == QChar(' '));
+        }
     }
 
     return bResult;
@@ -885,10 +964,8 @@ QString XPDF::_getCommentString(const QString &sString)
 {
     QString sResult;
 
-    if (sString.size() > 0) {
-        if (sString.at(0) == QChar('%')) {
-            sResult = sString.section("%", 1, -1);
-        }
+    if (!sString.isEmpty() && (sString.at(0) == QChar('%'))) {
+        sResult = sString.mid(1);
     }
 
     return sResult;
@@ -935,43 +1012,55 @@ QDateTime XPDF::_getDateTime(const QString &sString)
 
 qint32 XPDF::getObjectID(const QString &sString)
 {
-    return sString.section(" ", 0, 0).toInt();
+    // Parse leading integer (until first space) without allocating
+    qint64 n = 0;
+    bool neg = false;
+    int i = 0;
+    const int len = sString.size();
+    if (i < len && sString.at(i) == QChar('-')) { neg = true; ++i; }
+    for (; i < len; ++i) {
+        const QChar c = sString.at(i);
+        if (c < QChar('0') || c > QChar('9')) break;
+        n = n * 10 + (c.unicode() - '0');
+    }
+    if (neg) n = -n;
+    return static_cast<qint32>(n);
 }
 
 XBinary::XVARIANT XPDF::getFirstStringValueByKey(QList<QString> *pListStrings, const QString &sKey, PDSTRUCT *pPdStruct)
 {
     XBinary::XVARIANT varResult;
 
-    qint32 nNumberOfParts = pListStrings->count();
+    const qint32 nNumberOfParts = pListStrings->count();
 
-    for (qint32 j = 0; (j < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
-        QString sCurrentKey = pListStrings->at(j);
+    for (qint32 j = 0; (j + 1 < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+        const QString &sCurrentKey = pListStrings->at(j);
 
         if (sCurrentKey == sKey) {
-            if ((j + 1) < nNumberOfParts) {
-                QString sValue = pListStrings->at(j + 1);
-                XVARIANT varValue;
+            const QString &sValue = pListStrings->at(j + 1);
+            XVARIANT varValue;
 
-                if (sValue.toLongLong()) {
-                    varValue.varType = XBinary::VT_INT64;
-                    varValue.var = sValue.toLongLong();
-                } else if (_isDateTime(sValue)) {
-                    varValue.varType = XBinary::VT_DATETIME;
-                    varValue.var = _getDateTime(sValue);
-                } else if (_isString(sValue)) {
-                    varValue.varType = XBinary::VT_STRING;
-                    varValue.var = _getString(sValue);
-                } else if (_isHex(sValue)) {
-                    varValue.varType = XBinary::VT_HEX;
-                    varValue.var = _getHex(sValue);
-                } else {
-                    varValue.varType = XBinary::VT_VALUE;
-                    varValue.var = sValue;
-                }
+            // Preserve original "0" behavior (not treated as number)
+            qlonglong ll = sValue.toLongLong();
+            if (ll) {
+                varValue.varType = XBinary::VT_INT64;
+                varValue.var = ll;
+            } else if (_isDateTime(sValue)) {
+                varValue.varType = XBinary::VT_DATETIME;
+                varValue.var = _getDateTime(sValue);
+            } else if (_isString(sValue)) {
+                varValue.varType = XBinary::VT_STRING;
+                varValue.var = _getString(sValue);
+            } else if (_isHex(sValue)) {
+                varValue.varType = XBinary::VT_HEX;
+                varValue.var = _getHex(sValue);
+            } else {
+                varValue.varType = XBinary::VT_VALUE;
+                varValue.var = sValue;
+            }
 
-                if (!varValue.var.isNull()) {
-                    varResult = varValue;
-                }
+            if (!varValue.var.isNull()) {
+                varResult = varValue;
             }
         }
     }
@@ -983,14 +1072,14 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
 {
     QList<XPART> listResult;
 
-    QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
+    const QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
 
     qint32 nNumberOfHrefs = listStrartHrefs.count();
 
     QList<OBJECT> listObject;
     if (nNumberOfHrefs) {
-        for (qint32 i = 0; (i < nNumberOfHrefs) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-            STARTHREF startxref = listStrartHrefs.at(i);
+        for (qint32 i = 0; (i < nNumberOfHrefs) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+            const STARTHREF &startxref = listStrartHrefs.at(i);
 
             if (startxref.bIsXref) {
                 listObject.append(getObjectsFromStartxref(&startxref, pPdStruct));
@@ -1006,11 +1095,11 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
     qint32 nNumberOfObjects = listObject.count();
 
     if (nNumberOfObjects) {
-        qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
+        const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
         XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
 
-        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-            OBJECT record = listObject.at(i);
+        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+            const OBJECT &record = listObject.at(i);
 
             XPART xpart = handleXpart(record.nOffset, record.nID, nPartLimit, pPdStruct);
 
@@ -1032,44 +1121,44 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const 
 
     qint32 nNumberOfRecords = pListObjects->count();
 
-    qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
+    const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
     XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfRecords);
 
-    for (qint32 i = 0; (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        XPART record = pListObjects->at(i);
+    for (qint32 i = 0; (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+        const XPART &record = pListObjects->at(i);
 
         qint32 nNumberOfParts = record.listParts.count();
 
-        for (qint32 j = 0; (j < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
-            QString sPart = record.listParts.at(j);
+        for (qint32 j = 0; (j + 1 < nNumberOfParts) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+            const QString &sPart = record.listParts.at(j);
 
             if (sPart == sKey) {
-                if ((j + 1) < nNumberOfParts) {
-                    QString sValue = record.listParts.at(j + 1);
-                    XVARIANT varValue;
+                const QString &sValue = record.listParts.at(j + 1);
+                XVARIANT varValue;
 
-                    if (sValue.toLongLong()) {
-                        varValue.varType = XBinary::VT_INT64;
-                        varValue.var = sValue.toLongLong();
-                    } else if (_isDateTime(sValue)) {
-                        varValue.varType = XBinary::VT_DATETIME;
-                        varValue.var = _getDateTime(sValue);
-                    } else if (_isString(sValue)) {
-                        varValue.varType = XBinary::VT_STRING;
-                        varValue.var = _getString(sValue);
-                    } else if (_isHex(sValue)) {
-                        varValue.varType = XBinary::VT_HEX;
-                        varValue.var = _getHex(sValue);
-                    } else {
-                        varValue.varType = XBinary::VT_VALUE;
-                        varValue.var = sValue;
-                    }
+                qlonglong ll = sValue.toLongLong();
+                if (ll) {
+                    varValue.varType = XBinary::VT_INT64;
+                    varValue.var = ll;
+                } else if (_isDateTime(sValue)) {
+                    varValue.varType = XBinary::VT_DATETIME;
+                    varValue.var = _getDateTime(sValue);
+                } else if (_isString(sValue)) {
+                    varValue.varType = XBinary::VT_STRING;
+                    varValue.var = _getString(sValue);
+                } else if (_isHex(sValue)) {
+                    varValue.varType = XBinary::VT_HEX;
+                    varValue.var = _getHex(sValue);
+                } else {
+                    varValue.varType = XBinary::VT_VALUE;
+                    varValue.var = sValue;
+                }
 
-                    if (!varValue.var.isNull()) {
-                        if (!stVars.contains(varValue.var.toString())) {
-                            listResult.append(varValue);
-                            stVars.insert(varValue.var.toString());
-                        }
+                if (!varValue.var.isNull()) {
+                    const QString key = varValue.var.toString();
+                    if (!stVars.contains(key)) {
+                        listResult.append(varValue);
+                        stVars.insert(key);
                     }
                 }
             }
@@ -1136,19 +1225,17 @@ QString XPDF::getFilters(PDSTRUCT *pPdStruct)
     QString sResult;
 
     QList<XPART> listParts = getParts(100, pPdStruct); // TODO limit
-    QList<XBinary::XVARIANT> listValues = getValuesByKey(&listParts, "/Filter", pPdStruct);
+    const QList<XBinary::XVARIANT> listValues = getValuesByKey(&listParts, QLatin1String("/Filter"), pPdStruct);
 
-    qint32 nNumberOfValues = listValues.count();
-    for (qint32 i = 0; (i < nNumberOfValues) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-        QString sValue = listValues.at(i).var.toString();
-        if (!sValue.isEmpty()) {
-            if (!sResult.isEmpty()) {
-                sResult += ", ";
-            }
-            sResult += sValue;
-        }
+    QStringList filters;
+
+    const int nNumberOfValues = listValues.count();
+    for (int i = 0; (i < nNumberOfValues) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+        const QString v = listValues.at(i).var.toString();
+        if (!v.isEmpty()) filters.append(v);
     }
 
+    sResult = filters.join(QLatin1String(", "));
     return sResult;
 }
 
@@ -1170,13 +1257,14 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
     qint64 nMaxOffset = 0;
     QList<OBJECT> listObject;
 
-    QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
+    const QList<STARTHREF> listStrartHrefs = findStartxrefs(0, pPdStruct);
+    const qint64 totalSize = getSize();
 
     qint32 nNumberOfFrefs = listStrartHrefs.count();
 
     if (nNumberOfFrefs) {
         if (nFileParts & FILEPART_SIGNATURE) {
-            OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
+            const OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
 
             FPART record = {};
 
@@ -1189,8 +1277,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             listResult.append(record);
         }
 
-        for (int j = 0; (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
-            STARTHREF startxref = listStrartHrefs.at(j);
+        for (int j = 0; (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+            const STARTHREF &startxref = listStrartHrefs.at(j);
 
             if (startxref.bIsXref) {
                 if ((nFileParts & FILEPART_OBJECT) || (nFileParts & FILEPART_STREAM)) {
@@ -1204,7 +1292,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     record.nFileOffset = startxref.nXrefOffset;
                     record.nFileSize = startxref.nFooterOffset - startxref.nXrefOffset;
                     record.nVirtualAddress = -1;
-                    record.sName = QString("xref");
+                    record.sName = QStringLiteral("xref");
 
                     listResult.append(record);
                 }
@@ -1239,7 +1327,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         qint32 nNumberOfObjects = listObject.count();
 
         if (nNumberOfObjects) {
-            OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
+            const OS_STRING osHeader = _readPDFString(0, 20, pPdStruct);
 
             if (nFileParts & FILEPART_SIGNATURE) {
                 FPART record = {};
@@ -1256,8 +1344,10 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             nMaxOffset = osHeader.nSize;
         }
 
-        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-            nMaxOffset = listObject.at(i).nOffset + listObject.at(i).nSize;
+        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+            const OBJECT &o = listObject.at(i);
+            const qint64 end = o.nOffset + o.nSize;
+            if (end > nMaxOffset) nMaxOffset = end;
         }
     }
 
@@ -1277,8 +1367,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         qint32 nNumberOfObjects = listObject.count();
         qint32 nStreamNumber = 0;
 
-        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
-            OBJECT object = listObject.at(i);
+        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+            const OBJECT &object = listObject.at(i);
 
             if (nFileParts & FILEPART_OBJECT) {
                 FPART record = {};
@@ -1297,8 +1387,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                 qint32 nNumberOfStreams = xpart.listStreams.count();
 
-                for (qint32 j = 0; (j < nNumberOfStreams) && XBinary::isPdStructNotCanceled(pPdStruct); j++) {
-                    STREAM stream = xpart.listStreams.at(j);
+                for (qint32 j = 0; (j < nNumberOfStreams) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+                    const STREAM &stream = xpart.listStreams.at(j);
 
                     XBinary::FPART record = {};
                     record.nFileOffset = stream.nOffset;
@@ -1307,23 +1397,23 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     record.filePart = XBinary::FILEPART_STREAM;
                     record.nVirtualAddress = -1;
 
-                    QString sFilter = getFirstStringValueByKey(&(xpart.listParts), "/Filter", pPdStruct).var.toString();
+                    const QString sFilter = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Filter"), pPdStruct).var.toString();
 
-                    if (sFilter == "/FlateDecode") {
+                    if (sFilter == QLatin1String("/FlateDecode")) {
                         // ZLIB
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_ZLIB);
-                    } else if (sFilter == "/LZWDecode") {
+                    } else if (sFilter == QLatin1String("/LZWDecode")) {
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_LZW_PDF);
                         // record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
-                    } else if (sFilter == "/ASCII85Decode") {
+                    } else if (sFilter == QLatin1String("/ASCII85Decode")) {
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_ASCII85);
-                    } else if (sFilter == "/DCTDecode") {
+                    } else if (sFilter == QLatin1String("/DCTDecode")) {
                         // JPEG
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
-                    } else if (sFilter == "/CCITTFaxDecode") {
+                    } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
                         // JPEG
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
-                    } else if (sFilter == "[") {
+                    } else if (sFilter == QLatin1String("[")) {
 #ifdef QT_DEBUG
                         qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
 #endif
@@ -1335,18 +1425,18 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                         record.mapProperties.insert(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE);
                     }
 
-                    if (sFilter != "") {
-                        if (getFirstStringValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
-                            qint32 nWidth = getFirstStringValueByKey(&(xpart.listParts), "/Width", pPdStruct).var.toInt();
-                            qint32 nHeight = getFirstStringValueByKey(&(xpart.listParts), "/Height", pPdStruct).var.toInt();
-                            qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), "/BitsPerComponent", pPdStruct).var.toInt();
+                    if (!sFilter.isEmpty()) {
+                        if (getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Subtype"), pPdStruct).var.toString() == QLatin1String("/Image")) {
+                            const qint32 nWidth = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Width"), pPdStruct).var.toInt();
+                            const qint32 nHeight = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Height"), pPdStruct).var.toInt();
+                            const qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/BitsPerComponent"), pPdStruct).var.toInt();
 
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
                             record.mapProperties.insert(FPART_PROP_FILETYPE_EXTRA, XBinary::FT_DATA);
                             record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
                             record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
                             record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
-                            record.mapProperties.insert(FPART_PROP_EXT, "png");
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("png"));
                             record.mapProperties.insert(
                                 FPART_PROP_INFO, QString("%1 (%2 x %3) [%4]")
                                                      .arg(tr("Raw image data"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
@@ -1375,12 +1465,12 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
     }
 
     if (nFileParts & FILEPART_OVERLAY) {
-        if (nMaxOffset < getSize()) {
+        if (nMaxOffset < totalSize) {
             FPART record = {};
 
             record.filePart = FILEPART_OVERLAY;
             record.nFileOffset = nMaxOffset;
-            record.nFileSize = getSize() - nMaxOffset;
+            record.nFileSize = totalSize - nMaxOffset;
             record.nVirtualAddress = -1;
             record.sName = tr("Overlay");
 
