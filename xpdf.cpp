@@ -100,14 +100,18 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
     const qint64 endBound = nOffset + nSize;
 
     while (XBinary::isPdStructNotCanceled(pPdStruct) && (nCurrentOffset < endBound)) {
-        const OS_STRING osString = _readPDFString(nCurrentOffset, 100, pPdStruct);
+        // Read a small header token; 64 bytes is enough to capture "<num> <gen> obj" and comments
+        const OS_STRING osString = _readPDFString(nCurrentOffset, 64, pPdStruct);
 
         if (_isObject(osString.sString)) {
             const quint64 nID = getObjectID(osString.sString);
-            const qint64 nEndObjOffset = find_ansiString(nCurrentOffset + osString.nSize, -1, "endobj", pPdStruct);
+            // Bound the search for endobj to the current scan window
+            const qint64 searchStart = nCurrentOffset + osString.nSize;
+            const qint64 searchLen = qMax<qint64>(0, endBound - searchStart);
+            const qint64 nEndObjOffset = (searchLen > 0) ? find_ansiString(searchStart, searchLen, "endobj", pPdStruct) : -1;
 
             if (nEndObjOffset != -1) {
-                const OS_STRING osEndObj = _readPDFString(nEndObjOffset, 100, pPdStruct);
+                const OS_STRING osEndObj = _readPDFString(nEndObjOffset, 32, pPdStruct);
 
                 if (_isEndObject(osEndObj.sString)) {
                     OBJECT record = {};
@@ -125,8 +129,8 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
                 break;
             }
         } else if (_isComment(osString.sString)) {
+            // osString.nSize already includes trailing line ending; no extra skip needed
             nCurrentOffset += osString.nSize;
-            skipPDFEnding(&nCurrentOffset, pPdStruct);
         } else {
             bool bContinue = false;
             if (bDeepScan) {
