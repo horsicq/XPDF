@@ -24,11 +24,6 @@
 #include <QtGlobal>
 
 namespace XPDF_DEF {
-// struct OBJECT {
-//     quint64 nID;
-//     qint64 nOffset;
-//     qint64 nSize;
-//     bool bIsFree;
-// };
+// Intentionally left empty: project-specific type aliases / defs may be added here.
 }  // namespace XPDF_DEF
 #endif  // XPDF_DEF_H
