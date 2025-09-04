@@ -587,7 +587,6 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStr
         return result;  // Out of bounds
     }
 
-
     qint64 nRemaining = nFileSize - nOffset;
     if (nRemaining <= 0) {
         return result;
@@ -635,7 +634,6 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_hex(qint64 nOffset, PDSTRUCT *pPdStr
     if (nOffset < 0 || nOffset >= nFileSize) {
         return result;  // Out of bounds
     }
-
 
     qint64 nRemaining = nFileSize - nOffset;
     if (nRemaining <= 0) {
@@ -870,7 +868,7 @@ bool XPDF::_isObject(const QString &sString)
     // Fast check: last token equals "obj"
     qint32 nI = sString.size();
     while (nI > 0 && sString.at(nI - 1) == QChar(' ')) --nI;  // trim right spaces
-    const qint32 nTokenLen = 3;                                // "obj"
+    const qint32 nTokenLen = 3;                               // "obj"
     if (nI < nTokenLen) return false;
     // Ensure boundary before token is start or space
     const qint32 nStart = nI - nTokenLen;
