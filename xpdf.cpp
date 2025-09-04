@@ -1197,25 +1197,29 @@ QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
 {
     QString sResult;
 
+    const qint64 nFileSize = getSize();
     qint64 nCurrentOffset = 0;
 
-    OS_STRING osString = _readPDFString(nCurrentOffset, 100, nullptr);
-    nCurrentOffset += osString.nSize;
-    skipPDFEnding(&nCurrentOffset, pPdStruct);
+    // Read header line ("%PDF-...") and advance just past its line ending
+    OS_STRING osString = _readPDFString(nCurrentOffset, 100, pPdStruct);
+    nCurrentOffset += osString.nSize;  // _readPDFString already counted trailing EOL
 
-    if (read_uint8(nCurrentOffset) == '%') {
-        nCurrentOffset++;
+    // Ensure we are within file bounds and next line starts with '%'
+    if ((nCurrentOffset < nFileSize) && (read_uint8(nCurrentOffset) == '%')) {
+        ++nCurrentOffset;
 
         QByteArray baData;
+        baData.reserve(40);
 
-        for (qint32 i = 0; (i < 40) && XBinary::isPdStructNotCanceled(pPdStruct); i++) {
+        const qint64 nMaxRead = qMin<qint64>(40, nFileSize - nCurrentOffset);
+        for (qint32 i = 0; (i < nMaxRead) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             quint8 nChar = read_uint8(nCurrentOffset + i);
 
             if ((nChar == 13) || (nChar == 10) || (nChar == 0)) {
                 break;
             }
 
-            baData.append(nChar);
+            baData.append(static_cast<char>(nChar));
         }
 
         sResult = baData.toHex();
