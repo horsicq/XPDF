@@ -62,18 +62,18 @@ public:
 
     XPDF(QIODevice *pDevice);
 
-    virtual bool isValid(PDSTRUCT *pPdStruct = nullptr);
-    virtual QString getVersion();
-    virtual FT getFileType();
-    virtual ENDIAN getEndian();
-    virtual qint64 getFileFormatSize(PDSTRUCT *pPdStruct);
-    virtual QString getFileFormatExt();
-    virtual QString getFileFormatExtsString();
-    virtual MODE getMode();
-    virtual QString getMIMEString();
+    virtual bool isValid(PDSTRUCT *pPdStruct = nullptr) override;
+    virtual QString getVersion() override;
+    virtual FT getFileType() override;
+    virtual ENDIAN getEndian() override;
+    virtual qint64 getFileFormatSize(PDSTRUCT *pPdStruct) override;
+    virtual QString getFileFormatExt() override;
+    virtual QString getFileFormatExtsString() override;
+    virtual MODE getMode() override;
+    virtual QString getMIMEString() override;
 
-    virtual QList<MAPMODE> getMapModesList();
-    virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr);
+    virtual QList<MAPMODE> getMapModesList() override;
+    virtual _MEMORY_MAP getMemoryMap(MAPMODE mapMode = MAPMODE_UNKNOWN, PDSTRUCT *pPdStruct = nullptr) override;
 
     QList<STARTHREF> findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct);
     QList<OBJECT> getObjectsFromStartxref(const STARTHREF *pStartxref, PDSTRUCT *pPdStruct);
@@ -106,15 +106,15 @@ public:
     static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
     static XVARIANT getFirstStringValueByKey(QList<QString> *pListStrings, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
 
-    virtual qint32 getType();
-    virtual QString typeIdToString(qint32 nType);
+    virtual qint32 getType() override;
+    virtual QString typeIdToString(qint32 nType) override;
 
     QString getHeaderCommentAsHex(PDSTRUCT *pPdStruct);
 
-    virtual QList<FPART> getFileParts(quint32 nFileParts, qint32 nLimit = -1, PDSTRUCT *pPdStruct = nullptr);
+    virtual QList<FPART> getFileParts(quint32 nFileParts, qint32 nLimit = -1, PDSTRUCT *pPdStruct = nullptr) override;
 
     QString getFilters(PDSTRUCT *pPdStruct = nullptr);
-    virtual QString getInfo(PDSTRUCT *pPdStruct = nullptr);
+    virtual QString getInfo(PDSTRUCT *pPdStruct = nullptr) override;
 };
 
 #endif  // XPDF_H
