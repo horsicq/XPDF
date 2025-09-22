@@ -1438,7 +1438,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             const qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/BitsPerComponent"), pPdStruct).var.toInt();
 
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
-                            record.mapProperties.insert(FPART_PROP_FILETYPE_EXTRA, XBinary::FT_DATA);
+                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, XBinary::HANDLE_METHOD_PDF_IMAGEDATA);
                             record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
                             record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
                             record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
