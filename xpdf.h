@@ -61,6 +61,7 @@ public:
     };
 
     XPDF(QIODevice *pDevice);
+    virtual ~XPDF();
 
     virtual bool isValid(PDSTRUCT *pPdStruct = nullptr) override;
     virtual QString getVersion() override;
