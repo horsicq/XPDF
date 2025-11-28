@@ -1490,3 +1490,202 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
     return listResult;
 }
+
+bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &mapProperties, PDSTRUCT *pPdStruct)
+{
+    Q_UNUSED(mapProperties)
+
+    if (!pState) {
+        return false;
+    }
+
+    // Initialize state
+    pState->nCurrentOffset = 0;
+    pState->nTotalSize = getSize();
+    pState->nCurrentIndex = 0;
+    pState->mapProperties = mapProperties;
+    pState->pContext = nullptr;
+
+    // Get all streams from the PDF
+    QList<XBinary::FPART> listStreams = getFileParts(FILEPART_STREAM, -1, pPdStruct);
+
+    if (XBinary::isPdStructNotCanceled(pPdStruct)) {
+        // Create context
+        UNPACK_CONTEXT *pContext = new UNPACK_CONTEXT;
+        pContext->listStreams = listStreams;
+        pContext->nCurrentStreamIndex = 0;
+
+        pState->pContext = pContext;
+        pState->nNumberOfRecords = listStreams.count();
+
+        return true;
+    }
+
+    return false;
+}
+
+XBinary::ARCHIVERECORD XPDF::infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStruct)
+{
+    Q_UNUSED(pPdStruct)
+
+    XBinary::ARCHIVERECORD result = {};
+
+    if (!pState || !pState->pContext) {
+        return result;
+    }
+
+    UNPACK_CONTEXT *pContext = (UNPACK_CONTEXT *)pState->pContext;
+
+    if (pContext->nCurrentStreamIndex < 0 || pContext->nCurrentStreamIndex >= pContext->listStreams.count()) {
+        return result;
+    }
+
+    const XBinary::FPART &stream = pContext->listStreams.at(pContext->nCurrentStreamIndex);
+
+    // Fill archive record
+    result.nStreamOffset = stream.nFileOffset;
+    result.nStreamSize = stream.nFileSize;
+
+    // Generate filename from stream name
+    QString sFileName = stream.sName;
+    // Replace invalid filename characters
+    sFileName = sFileName.replace(QLatin1Char('/'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('\\'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char(':'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('*'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('?'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('"'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('<'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('>'), QLatin1Char('_'));
+    sFileName = sFileName.replace(QLatin1Char('|'), QLatin1Char('_'));
+
+    // Add extension based on file type or compression
+    QString sExt = stream.mapProperties.value(FPART_PROP_EXT).toString();
+    if (sExt.isEmpty()) {
+        // Default extension based on compression method
+        COMPRESS_METHOD compMethod = (COMPRESS_METHOD)stream.mapProperties.value(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE).toInt();
+        if (compMethod == COMPRESS_METHOD_STORE) {
+            sExt = QStringLiteral("bin");
+        } else {
+            sExt = QStringLiteral("dat");
+        }
+    }
+
+    if (!sExt.isEmpty()) {
+        sFileName = QString("%1_%2.%3").arg(sFileName, QString::number(pContext->nCurrentStreamIndex), sExt);
+    } else {
+        sFileName = QString("%1_%2").arg(sFileName, QString::number(pContext->nCurrentStreamIndex));
+    }
+
+    result.mapProperties.insert(FPART_PROP_ORIGINALNAME, sFileName);
+    result.mapProperties.insert(FPART_PROP_UNCOMPRESSEDSIZE, stream.nFileSize);
+    result.mapProperties.insert(FPART_PROP_COMPRESSEDSIZE, stream.nFileSize);
+
+    // Copy relevant properties from FPART
+    QMapIterator<FPART_PROP, QVariant> it(stream.mapProperties);
+    while (it.hasNext()) {
+        it.next();
+        result.mapProperties.insert(it.key(), it.value());
+    }
+
+    return result;
+}
+
+bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPdStruct)
+{
+    if (!pState || !pState->pContext || !pDevice) {
+        return false;
+    }
+
+    UNPACK_CONTEXT *pContext = (UNPACK_CONTEXT *)pState->pContext;
+
+    if (pContext->nCurrentStreamIndex < 0 || pContext->nCurrentStreamIndex >= pContext->listStreams.count()) {
+        return false;
+    }
+
+    const XBinary::FPART &stream = pContext->listStreams.at(pContext->nCurrentStreamIndex);
+
+    // Read stream data
+    QByteArray baData = read_array(stream.nFileOffset, stream.nFileSize);
+
+    if (XBinary::isPdStructNotCanceled(pPdStruct)) {
+        // Check if decompression is needed
+        COMPRESS_METHOD compMethod = (COMPRESS_METHOD)stream.mapProperties.value(FPART_PROP_COMPRESSMETHOD, COMPRESS_METHOD_STORE).toInt();
+
+        if (compMethod != COMPRESS_METHOD_STORE) {
+            // Decompress the data
+            QBuffer sourceBuffer(&baData);
+            sourceBuffer.open(QIODevice::ReadOnly);
+
+            QBuffer destBuffer;
+            destBuffer.open(QIODevice::WriteOnly);
+
+            XArchive::DECOMPRESSSTRUCT decompressStruct = {};
+            decompressStruct.spInfo.compressMethod = compMethod;
+            decompressStruct.pSourceDevice = &sourceBuffer;
+            decompressStruct.pDestDevice = &destBuffer;
+            decompressStruct.nInSize = baData.size();
+            decompressStruct.nOutSize = -1;
+            decompressStruct.nDecompressedOffset = 0;
+            decompressStruct.nDecompressedLimit = -1;
+            decompressStruct.bLimit = false;
+
+            XArchive::COMPRESS_RESULT compressResult = XArchive::_decompress(&decompressStruct, pPdStruct);
+
+            sourceBuffer.close();
+            destBuffer.close();
+
+            if (compressResult == XArchive::COMPRESS_RESULT_OK) {
+                baData = destBuffer.data();
+            } else {
+                // Decompression failed, use original data
+#ifdef QT_DEBUG
+                qDebug() << "XPDF::unpackCurrent: Decompression failed, using original data";
+#endif
+            }
+        }
+
+        // Write data to output device
+        qint64 nWritten = pDevice->write(baData);
+        return (nWritten == baData.size());
+    }
+
+    return false;
+}
+
+bool XPDF::moveToNext(UNPACK_STATE *pState, PDSTRUCT *pPdStruct)
+{
+    Q_UNUSED(pPdStruct)
+
+    if (!pState || !pState->pContext) {
+        return false;
+    }
+
+    UNPACK_CONTEXT *pContext = (UNPACK_CONTEXT *)pState->pContext;
+
+    pContext->nCurrentStreamIndex++;
+    pState->nCurrentIndex = pContext->nCurrentStreamIndex;
+
+    return true;
+}
+
+bool XPDF::finishUnpack(UNPACK_STATE *pState, PDSTRUCT *pPdStruct)
+{
+    Q_UNUSED(pPdStruct)
+
+    if (!pState) {
+        return false;
+    }
+
+    if (pState->pContext) {
+        UNPACK_CONTEXT *pContext = (UNPACK_CONTEXT *)pState->pContext;
+        delete pContext;
+        pState->pContext = nullptr;
+    }
+
+    pState->nCurrentIndex = 0;
+    pState->nNumberOfRecords = 0;
+    pState->nCurrentOffset = 0;
+
+    return true;
+}

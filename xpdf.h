@@ -23,6 +23,7 @@
 
 #include "xbinary.h"
 #include "xpdf_def.h"
+#include "xarchive.h"
 
 class XPDF : public XBinary {
     Q_OBJECT
@@ -116,6 +117,19 @@ public:
 
     QString getFilters(PDSTRUCT *pPdStruct = nullptr);
     virtual QString getInfo(PDSTRUCT *pPdStruct = nullptr) override;
+
+    // Streaming unpack API
+    virtual bool initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &mapProperties, PDSTRUCT *pPdStruct = nullptr) override;
+    virtual ARCHIVERECORD infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStruct = nullptr) override;
+    virtual bool unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPdStruct = nullptr) override;
+    virtual bool moveToNext(UNPACK_STATE *pState, PDSTRUCT *pPdStruct = nullptr) override;
+    virtual bool finishUnpack(UNPACK_STATE *pState, PDSTRUCT *pPdStruct = nullptr) override;
+
+private:
+    struct UNPACK_CONTEXT {
+        QList<XBinary::FPART> listStreams;
+        qint32 nCurrentStreamIndex;
+    };
 };
 
 #endif  // XPDF_H
