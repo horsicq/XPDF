@@ -722,7 +722,14 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
             OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
             QString sFooterHead = osEnd.sString;
+#if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
             sFooterHead.resize(5, QChar(' '));
+#else
+            sFooterHead.resize(5);
+            for (int i = osEnd.sString.length(); i < 5; i++) {
+                sFooterHead[i] = QChar(' ');
+            }
+#endif
 
             if (sFooterHead == QStringLiteral("%%EOF")) {
                 nCurrent += 5;
@@ -1606,7 +1613,7 @@ bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPd
     const XBinary::FPART &stream = pContext->listStreams.at(pContext->nCurrentStreamIndex);
 
     // Read stream data
-    QByteArray baData = read_array(stream.nFileOffset, stream.nFileSize);
+    QByteArray baData = read_array(stream.nFileOffset, stream.nFileSize, pPdStruct);
 
     if (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // Check if decompression is needed
