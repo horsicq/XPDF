@@ -1613,7 +1613,7 @@ bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPd
     const XBinary::FPART &stream = pContext->listStreams.at(pContext->nCurrentStreamIndex);
 
     // Read stream data
-    QByteArray baData = read_array(stream.nFileOffset, stream.nFileSize, pPdStruct);
+    QByteArray baData = read_array_process(stream.nFileOffset, stream.nFileSize, pPdStruct);
 
     if (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // Check if decompression is needed
