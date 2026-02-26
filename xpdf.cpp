@@ -1418,18 +1418,18 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                     if (sFilter == QLatin1String("/FlateDecode")) {
                         // ZLIB
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_ZLIB);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_ZLIB);
                     } else if (sFilter == QLatin1String("/LZWDecode")) {
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_LZW_PDF);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_LZW_PDF);
                         // record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE);
                     } else if (sFilter == QLatin1String("/ASCII85Decode")) {
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_ASCII85);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_ASCII85);
                     } else if (sFilter == QLatin1String("/DCTDecode")) {
                         // JPEG
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
                     } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
                         // JPEG
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
                     } else if (sFilter == QLatin1String("[")) {
 #ifdef QT_DEBUG
                         qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
@@ -1439,7 +1439,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                         qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
 #endif
                         // TODO
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE);
+                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
                     }
 
                     if (!sFilter.isEmpty()) {
@@ -1449,7 +1449,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             const qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/BitsPerComponent"), pPdStruct).var.toInt();
 
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
-                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, XBinary::HANDLE_METHOD_PDF_IMAGEDATA);
+                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, XBinary::HANDLE_METHOD_PDF_IMAGEDATA);
                             record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
                             record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
                             record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
@@ -1570,7 +1570,7 @@ XBinary::ARCHIVERECORD XPDF::infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStru
     QString sExt = stream.mapProperties.value(FPART_PROP_EXT).toString();
     if (sExt.isEmpty()) {
         // Default extension based on compression method
-        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE).toInt();
+        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
         if (compMethod == HANDLE_METHOD_STORE) {
             sExt = QStringLiteral("bin");
         } else {
@@ -1617,7 +1617,7 @@ bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPd
 
     if (XBinary::isPdStructNotCanceled(pPdStruct)) {
         // Check if decompression is needed
-        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE).toInt();
+        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
 
         if (compMethod != HANDLE_METHOD_STORE) {
             // Decompress the data
