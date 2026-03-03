@@ -1510,7 +1510,7 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
     pState->nCurrentOffset = 0;
     pState->nTotalSize = getSize();
     pState->nCurrentIndex = 0;
-    pState->mapProperties = mapProperties;
+    pState->mapUnpackProperties = mapProperties;
     pState->pContext = nullptr;
 
     // Get all streams from the PDF
