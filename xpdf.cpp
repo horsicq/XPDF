@@ -19,6 +19,7 @@
  * SOFTWARE.
  */
 #include "xpdf.h"
+#include "xdecompress.h"
 
 XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
 {
@@ -617,7 +618,7 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_val(qint64 nOffset, PDSTRUCT *pPdStr
 
     if (bSpace) {
         if (nRemaining >= 3) {
-            const QString sSuffix = read_ansiString(nOffset + result.nSize, 3);
+            const QString sSuffix = read_ansiString(result.nOffset + result.nSize, 3);
             if (sSuffix == "0 R") {
                 result.sString.append(" " + sSuffix);
                 result.nSize += 3;
@@ -820,6 +821,9 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                 } else if (bLength) {
                     bLength = false;
                     sLength = osStringPart.sString;
+                    // Check for indirect reference pattern: "N 0 R" in listParts
+                    // If this token is a number, peek at the next two parts already appended
+                    // Indirect refs are resolved later at "stream" handling
                 }
 
                 if ((nObj == 0) && (nCol == 0)) {
@@ -833,7 +837,26 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
         } else if (osString.sString == QLatin1String("stream")) {
             STREAM stream = {};
             stream.nOffset = nOffset;
+
+            // Detect indirect reference: sLength captured only the first token (e.g., "8" from "8 0 R").
+            // Check the parts list for "sLength", "0", "R" sequence to determine if it's an indirect reference.
+            bool bIndirectLength = false;
             if (sLength.toInt()) {
+                qint32 nPartsCount = result.listParts.count();
+                for (qint32 nP = 0; nP < nPartsCount - 2; nP++) {
+                    if ((result.listParts.at(nP) == sLength) &&
+                        (result.listParts.at(nP + 2) == QLatin1String("R"))) {
+                        // Check if the token before sLength is "/Length"
+                        if ((nP > 0) && (result.listParts.at(nP - 1) == QLatin1String("/Length"))) {
+                            bIndirectLength = true;
+                            sLength = result.listParts.at(nP) + " " + result.listParts.at(nP + 1) + " R";
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!bIndirectLength && sLength.toInt()) {
                 stream.nSize = sLength.toInt();
             } else if (sLength.section(" ", 2, 2) == QLatin1String("R")) {
                 QString sPattern = sLength;
@@ -1383,6 +1406,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
     if ((nFileParts & FILEPART_STREAM) || (nFileParts & FILEPART_OBJECT)) {
         qint32 nNumberOfObjects = listObject.count();
         qint32 nStreamNumber = 0;
+        QSet<qint32> stPaletteObjectIds;
 
         for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             const OBJECT &object = listObject.at(i);
@@ -1415,67 +1439,276 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     record.nVirtualAddress = -1;
 
                     const QString sFilter = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Filter"), pPdStruct).var.toString();
+                    const QString sSubtype = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Subtype"), pPdStruct).var.toString();
+
+                    // Store filter name and subtype for all streams
+                    if (!sFilter.isEmpty()) {
+                        record.mapProperties.insert(FPART_PROP_FILTERNAME, sFilter);
+                    }
+                    if (!sSubtype.isEmpty()) {
+                        record.mapProperties.insert(FPART_PROP_SUBTYPE, sSubtype);
+                    }
+
+                    // Determine decompression method from filter
+                    HANDLE_METHOD decompressMethod = HANDLE_METHOD_STORE;
 
                     if (sFilter == QLatin1String("/FlateDecode")) {
-                        // ZLIB
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_ZLIB);
+                        decompressMethod = HANDLE_METHOD_ZLIB;
                     } else if (sFilter == QLatin1String("/LZWDecode")) {
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_LZW_PDF);
-                        // record.mapProperties.insert(FPART_PROP_HANDLEMETHOD1, HANDLE_METHOD_STORE);
+                        decompressMethod = HANDLE_METHOD_LZW_PDF;
                     } else if (sFilter == QLatin1String("/ASCII85Decode")) {
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_ASCII85);
+                        decompressMethod = HANDLE_METHOD_ASCII85;
                     } else if (sFilter == QLatin1String("/DCTDecode")) {
-                        // JPEG
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
+                        decompressMethod = HANDLE_METHOD_STORE;  // JPEG data, stored as-is
                     } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
-                        // JPEG
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
+                        decompressMethod = HANDLE_METHOD_STORE;
                     } else if (sFilter == QLatin1String("[")) {
 #ifdef QT_DEBUG
-                        qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
+                        qDebug() << "Array filter:" << sFilter << xpart.listParts << record.sName;
 #endif
-                    } else {
+                    } else if (!sFilter.isEmpty()) {
 #ifdef QT_DEBUG
                         qDebug() << "Unknown filter:" << sFilter << xpart.listParts << record.sName;
 #endif
-                        // TODO
-                        record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE);
                     }
 
-                    if (!sFilter.isEmpty()) {
-                        if (getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Subtype"), pPdStruct).var.toString() == QLatin1String("/Image")) {
-                            const qint32 nWidth = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Width"), pPdStruct).var.toInt();
-                            const qint32 nHeight = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Height"), pPdStruct).var.toInt();
-                            const qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/BitsPerComponent"), pPdStruct).var.toInt();
+                    record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, decompressMethod);
 
+                    // Check if this is an image stream
+                    if (sSubtype == QLatin1String("/Image")) {
+                        const qint32 nWidth = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Width"), pPdStruct).var.toInt();
+                        const qint32 nHeight = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Height"), pPdStruct).var.toInt();
+                        const qint32 nBitsPerComponent = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/BitsPerComponent"), pPdStruct).var.toInt();
+
+                        // Parse ColorSpace - may be a simple name or an array like [/Indexed /DeviceRGB 255 <palette>]
+                        QString sColorSpace;
+                        QString sBaseColorSpace;
+                        QByteArray baPalette;
+                        qint32 nMaxIndex = -1;
+
+                        {
+                            const qint32 nParts = xpart.listParts.count();
+
+                            for (qint32 p = 0; (p + 1 < nParts) && XBinary::isPdStructNotCanceled(pPdStruct); ++p) {
+                                if (xpart.listParts.at(p) == QLatin1String("/ColorSpace")) {
+                                    const QString &sNext = xpart.listParts.at(p + 1);
+
+                                    if (sNext == QLatin1String("[")) {
+                                        // Array colorspace: collect tokens until ]
+                                        QStringList listTokens;
+
+                                        for (qint32 q = p + 2; q < nParts; ++q) {
+                                            if (xpart.listParts.at(q) == QLatin1String("]")) {
+                                                break;
+                                            }
+
+                                            listTokens.append(xpart.listParts.at(q));
+                                        }
+
+                                        if (listTokens.count() >= 1) {
+                                            sColorSpace = listTokens.at(0);  // e.g. /Indexed
+                                        }
+
+                                        if ((sColorSpace == QLatin1String("/Indexed")) && (listTokens.count() >= 3)) {
+                                            sBaseColorSpace = listTokens.at(1);  // e.g. /DeviceRGB
+                                            nMaxIndex = listTokens.at(2).toInt();
+
+                                            if (listTokens.count() >= 4) {
+                                                QString sPaletteToken = listTokens.at(3);
+
+                                                if (sPaletteToken.startsWith(QLatin1Char('<')) && sPaletteToken.endsWith(QLatin1Char('>'))) {
+                                                    // Inline hex palette
+                                                    QString sPaletteHex = sPaletteToken.mid(1, sPaletteToken.length() - 2);
+                                                    baPalette = QByteArray::fromHex(sPaletteHex.toLatin1());
+                                                } else if (sPaletteToken.endsWith(QLatin1String(" R")) || 
+                                                           ((listTokens.count() >= 6) && (listTokens.at(5) == QLatin1String("R")))) {
+                                                    // Indirect reference: either merged "objNum genNum R" token or separate tokens
+                                                    QString sObjRef;
+                                                    if (sPaletteToken.endsWith(QLatin1String(" R"))) {
+                                                        sObjRef = sPaletteToken;
+                                                    } else {
+                                                        sObjRef = sPaletteToken + " " + listTokens.at(4) + " R";
+                                                    }
+                                                    QString sObjPattern = sObjRef;
+                                                    sObjPattern.replace(QLatin1String("R"), QLatin1String("obj"));
+                                                    qint64 nPaletteObjOffset = find_ansiString(0, -1, sObjPattern, pPdStruct);
+
+                                                    if (nPaletteObjOffset != -1) {
+                                                        qint32 nPalObjId = sObjRef.section(" ", 0, 0).toInt();
+                                                        stPaletteObjectIds.insert(nPalObjId);
+                                                        XPART palPart = handleXpart(nPaletteObjOffset, nPalObjId, -1, pPdStruct);
+
+                                                        if (palPart.listStreams.count() > 0) {
+                                                            const STREAM &palStream = palPart.listStreams.at(0);
+                                                            QByteArray baRawPalette = read_array_process(palStream.nOffset, palStream.nSize, pPdStruct);
+
+                                                            // Determine palette stream filter
+                                                            QString sPalFilter;
+                                                            qint32 nPalParts = palPart.listParts.count();
+                                                            for (qint32 f = 0; f < nPalParts - 1; ++f) {
+                                                                if (palPart.listParts.at(f) == QLatin1String("/Filter")) {
+                                                                    sPalFilter = palPart.listParts.at(f + 1);
+                                                                    break;
+                                                                }
+                                                            }
+
+                                                            if (!sPalFilter.isEmpty() && (sPalFilter != QLatin1String("/None"))) {
+                                                                HANDLE_METHOD palMethod = HANDLE_METHOD_STORE;
+
+                                                                if (sPalFilter == QLatin1String("/ASCII85Decode")) {
+                                                                    palMethod = HANDLE_METHOD_ASCII85;
+                                                                } else if (sPalFilter == QLatin1String("/FlateDecode")) {
+                                                                    palMethod = HANDLE_METHOD_ZLIB;
+                                                                } else if (sPalFilter == QLatin1String("/LZWDecode")) {
+                                                                    palMethod = HANDLE_METHOD_LZW_PDF;
+                                                                }
+
+                                                                if (palMethod != HANDLE_METHOD_STORE) {
+                                                                    QBuffer palSourceBuffer(&baRawPalette);
+                                                                    palSourceBuffer.open(QIODevice::ReadOnly);
+                                                                    QBuffer palDestBuffer;
+                                                                    palDestBuffer.open(QIODevice::WriteOnly);
+
+                                                                    DATAPROCESS_STATE palState = {};
+                                                                    palState.pDeviceInput = &palSourceBuffer;
+                                                                    palState.pDeviceOutput = &palDestBuffer;
+                                                                    palState.nInputOffset = 0;
+                                                                    palState.nInputLimit = baRawPalette.size();
+                                                                    palState.nProcessedOffset = 0;
+                                                                    palState.nProcessedLimit = -1;
+                                                                    palState.bReadError = false;
+                                                                    palState.bWriteError = false;
+                                                                    palState.mapProperties.insert(FPART_PROP_HANDLEMETHOD, (quint32)palMethod);
+
+                                                                    XDecompress xDecompress;
+                                                                    bool bPalResult = xDecompress.decompress(&palState, pPdStruct);
+
+                                                                    palSourceBuffer.close();
+                                                                    palDestBuffer.close();
+
+                                                                    if (bPalResult && (palDestBuffer.data().size() > 0)) {
+                                                                        baPalette = palDestBuffer.data();
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                // Unfiltered palette stream
+                                                                baPalette = baRawPalette;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        sColorSpace = sNext;
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+
+                        record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
+                        record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
+                        record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
+
+                        if (!sColorSpace.isEmpty()) {
+                            record.mapProperties.insert(FPART_PROP_COLORSPACE, sColorSpace);
+                        }
+
+                        if (!sBaseColorSpace.isEmpty()) {
+                            record.mapProperties.insert(FPART_PROP_BASECOLORSPACE, sBaseColorSpace);
+                        }
+
+                        if (!baPalette.isEmpty()) {
+                            record.mapProperties.insert(FPART_PROP_PALETTE, baPalette);
+                        }
+
+                        if (sFilter == QLatin1String("/DCTDecode")) {
+                            // JPEG image: extract as JPEG
+                            record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_JPEG);
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("jpg"));
+                            record.mapProperties.insert(
+                                FPART_PROP_INFO,
+                                QString("%1 JPEG (%2 x %3) [%4] %5")
+                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent), sColorSpace));
+                        } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
+                            // CCITT Fax image: extract as TIFF with proper container
+                            qint32 nCcittK = -1;  // Default: Group 4
+                            XBinary::XVARIANT varK = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/K"), pPdStruct);
+                            if (!varK.var.isNull()) {
+                                nCcittK = varK.var.toInt();
+                            }
+                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_CCITTIMAGE);
+                            record.mapProperties.insert(FPART_PROP_CCITTK, nCcittK);
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("tif"));
+                            record.mapProperties.insert(
+                                FPART_PROP_INFO,
+                                QString("%1 CCITT (%2 x %3) [%4]")
+                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
+                        } else {
+                            // Raw pixel data: will be converted to PNG during unpack
+                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD2, decompressMethod);
+                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_IMAGEDATA);
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
-                            record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, XBinary::HANDLE_METHOD_PDF_IMAGEDATA);
-                            record.mapProperties.insert(FPART_PROP_WIDTH, nWidth);
-                            record.mapProperties.insert(FPART_PROP_HEIGHT, nHeight);
-                            record.mapProperties.insert(FPART_PROP_BITSPERCOMPONENT, nBitsPerComponent);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("png"));
                             record.mapProperties.insert(
-                                FPART_PROP_INFO, QString("%1 (%2 x %3) [%4]")
-                                                     .arg(tr("Raw image data"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
+                                FPART_PROP_INFO,
+                                QString("%1 RAW (%2 x %3) [%4] %5 %6")
+                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent), sColorSpace, sFilter));
+                        }
+                    } else {
+                        // Non-image stream: set extension and info based on filter/subtype
+                        if (sFilter == QLatin1String("/DCTDecode")) {
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("jpg"));
+                        } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("bin"));
+                        } else if (decompressMethod != HANDLE_METHOD_STORE) {
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("dat"));
+                        } else {
+                            record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("bin"));
+                        }
+
+                        // Store info about the stream
+                        QStringList listInfo;
+                        if (!sSubtype.isEmpty()) {
+                            listInfo << sSubtype;
+                        }
+                        if (!sFilter.isEmpty()) {
+                            listInfo << sFilter;
+                        }
+                        if (!listInfo.isEmpty()) {
+                            record.mapProperties.insert(FPART_PROP_INFO, listInfo.join(QLatin1String(" ")));
                         }
                     }
-
-                    // qDebug() << "Filter:" << sFilter << xpart.listParts << record.sName;
-
-                    // if (stream.nSize >= 6) {
-                    //     quint16 nHeader = read_uint16(record.nFileOffset);
-                    //     if ((nHeader == 0x5E78) || (nHeader == 0x9C78) || (nHeader == 0xDA78)) {
-
-                    //         if (getFirstStringValueByKey(&(xpart.listParts), "/Subtype", pPdStruct).var.toString() == "/Image") {
-                    //             qDebug() << xpart.listParts << record.sName;
-                    //         }
-                    //         compMethod = HANDLE_METHOD_ZLIB;
-                    //     }
-                    // }
 
                     listResult.append(record);
 
                     nStreamNumber++;
+                }
+            }
+        }
+
+        // Post-process: mark palette objects with .act extension
+        if (!stPaletteObjectIds.isEmpty()) {
+            qint32 nResultCount = listResult.count();
+            for (qint32 r = 0; r < nResultCount; ++r) {
+                if (listResult.at(r).filePart == XBinary::FILEPART_STREAM) {
+                    // Extract object ID from name: "Stream obj (ID)"
+                    QString sName = listResult.at(r).sName;
+                    qint32 nParenOpen = sName.indexOf(QLatin1Char('('));
+                    qint32 nParenClose = sName.indexOf(QLatin1Char(')'));
+                    if ((nParenOpen != -1) && (nParenClose != -1) && (nParenClose > nParenOpen)) {
+                        qint32 nObjId = sName.mid(nParenOpen + 1, nParenClose - nParenOpen - 1).toInt();
+                        if (stPaletteObjectIds.contains(nObjId)) {
+                            listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD2,
+                                listResult[r].mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE));
+                            listResult[r].mapProperties.insert(FPART_PROP_EXT, QStringLiteral("pal"));
+                            listResult[r].mapProperties.insert(FPART_PROP_FILETYPE, FT_PAL);
+                            listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_PALETTE);
+                            listResult[r].mapProperties.insert(FPART_PROP_INFO, tr("Color palette (PAL)"));
+                        }
+                    }
                 }
             }
         }
@@ -1567,22 +1800,17 @@ XBinary::ARCHIVERECORD XPDF::infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStru
     sFileName = sFileName.replace(QLatin1Char('|'), QLatin1Char('_'));
 
     // Add extension based on file type or compression
+    HANDLE_METHOD primaryMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
     QString sExt = stream.mapProperties.value(FPART_PROP_EXT).toString();
     if (sExt.isEmpty()) {
-        // Default extension based on compression method
-        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
-        if (compMethod == HANDLE_METHOD_STORE) {
+        if (primaryMethod == HANDLE_METHOD_STORE) {
             sExt = QStringLiteral("bin");
         } else {
             sExt = QStringLiteral("dat");
         }
     }
 
-    if (!sExt.isEmpty()) {
-        sFileName = QString("%1_%2.%3").arg(sFileName, QString::number(pContext->nCurrentStreamIndex), sExt);
-    } else {
-        sFileName = QString("%1_%2").arg(sFileName, QString::number(pContext->nCurrentStreamIndex));
-    }
+    sFileName = QString("%1_%2.%3").arg(sFileName, QString::number(pContext->nCurrentStreamIndex), sExt);
 
     result.mapProperties.insert(FPART_PROP_ORIGINALNAME, sFileName);
     result.mapProperties.insert(FPART_PROP_UNCOMPRESSEDSIZE, stream.nFileSize);
@@ -1600,64 +1828,19 @@ XBinary::ARCHIVERECORD XPDF::infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStru
 
 bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPdStruct)
 {
-    if (!pState || !pState->pContext || !pDevice) {
-        return false;
+    bool bResult = false;
+
+    if (pState && pDevice && pState->pContext) {
+        ARCHIVERECORD archiveRecord = infoCurrent(pState, pPdStruct);
+
+        XDecompress xDecompress;
+        connect(&xDecompress, &XDecompress::errorMessage, this, &XBinary::errorMessage);
+        connect(&xDecompress, &XDecompress::infoMessage, this, &XBinary::infoMessage);
+
+        bResult = xDecompress.decompressArchiveRecord(archiveRecord, getDevice(), pDevice, pState->mapUnpackProperties, pPdStruct);
     }
 
-    UNPACK_CONTEXT *pContext = (UNPACK_CONTEXT *)pState->pContext;
-
-    if (pContext->nCurrentStreamIndex < 0 || pContext->nCurrentStreamIndex >= pContext->listStreams.count()) {
-        return false;
-    }
-
-    const XBinary::FPART &stream = pContext->listStreams.at(pContext->nCurrentStreamIndex);
-
-    // Read stream data
-    QByteArray baData = read_array_process(stream.nFileOffset, stream.nFileSize, pPdStruct);
-
-    if (XBinary::isPdStructNotCanceled(pPdStruct)) {
-        // Check if decompression is needed
-        HANDLE_METHOD compMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
-
-        if (compMethod != HANDLE_METHOD_STORE) {
-            // Decompress the data
-            QBuffer sourceBuffer(&baData);
-            sourceBuffer.open(QIODevice::ReadOnly);
-
-            QBuffer destBuffer;
-            destBuffer.open(QIODevice::WriteOnly);
-
-            XArchive::DECOMPRESSSTRUCT decompressStruct = {};
-            decompressStruct.spInfo.compressMethod = compMethod;
-            decompressStruct.pSourceDevice = &sourceBuffer;
-            decompressStruct.pDestDevice = &destBuffer;
-            decompressStruct.nInSize = baData.size();
-            decompressStruct.nOutSize = -1;
-            decompressStruct.nDecompressedOffset = 0;
-            decompressStruct.nDecompressedLimit = -1;
-            decompressStruct.bLimit = false;
-
-            XArchive::COMPRESS_RESULT compressResult = XArchive::_decompress(&decompressStruct, pPdStruct);
-
-            sourceBuffer.close();
-            destBuffer.close();
-
-            if (compressResult == XArchive::COMPRESS_RESULT_OK) {
-                baData = destBuffer.data();
-            } else {
-                // Decompression failed, use original data
-#ifdef QT_DEBUG
-                qDebug() << "XPDF::unpackCurrent: Decompression failed, using original data";
-#endif
-            }
-        }
-
-        // Write data to output device
-        qint64 nWritten = pDevice->write(baData);
-        return (nWritten == baData.size());
-    }
-
-    return false;
+    return bResult;
 }
 
 bool XPDF::moveToNext(UNPACK_STATE *pState, PDSTRUCT *pPdStruct)
