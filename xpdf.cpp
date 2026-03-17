@@ -1059,8 +1059,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
             if (sLength.toInt()) {
                 qint32 nPartsCount = result.listParts.count();
                 for (qint32 nP = 0; nP < nPartsCount - 2; nP++) {
-                    if ((result.listParts.at(nP) == sLength) &&
-                        (result.listParts.at(nP + 2) == QLatin1String("R"))) {
+                    if ((result.listParts.at(nP) == sLength) && (result.listParts.at(nP + 2) == QLatin1String("R"))) {
                         if ((nP > 0) && (result.listParts.at(nP - 1) == QLatin1String("/Length"))) {
                             bIndirectLength = true;
                             sLength = result.listParts.at(nP) + " " + result.listParts.at(nP + 1) + " R";
@@ -1646,7 +1645,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             const OBJECT &object = listObject.at(i);
 
             if ((i > 0) && ((i % 100) == 0)) {
-                qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," << timerObjects.elapsed() << "ms";
+                qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," << timerObjects.elapsed()
+                         << "ms";
             }
 
             if (nFileParts & FILEPART_OBJECT) {
@@ -1758,7 +1758,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                                                     // Inline hex palette
                                                     QString sPaletteHex = sPaletteToken.mid(1, sPaletteToken.length() - 2);
                                                     baPalette = QByteArray::fromHex(sPaletteHex.toLatin1());
-                                                } else if (sPaletteToken.endsWith(QLatin1String(" R")) || 
+                                                } else if (sPaletteToken.endsWith(QLatin1String(" R")) ||
                                                            ((listTokens.count() >= 6) && (listTokens.at(5) == QLatin1String("R")))) {
                                                     // Indirect reference: either merged "objNum genNum R" token or separate tokens
                                                     QString sObjRef;
@@ -1866,10 +1866,9 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             // JPEG image: extract as JPEG
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_JPEG);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("jpg"));
-                            record.mapProperties.insert(
-                                FPART_PROP_INFO,
-                                QString("%1 JPEG (%2 x %3) [%4] %5")
-                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent), sColorSpace));
+                            record.mapProperties.insert(FPART_PROP_INFO, QString("%1 JPEG (%2 x %3) [%4] %5")
+                                                                             .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight),
+                                                                                  QString::number(nBitsPerComponent), sColorSpace));
                         } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
                             // CCITT Fax image: extract as TIFF with proper container
                             qint32 nCcittK = -1;  // Default: Group 4
@@ -1880,20 +1879,18 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_CCITTIMAGE);
                             record.mapProperties.insert(FPART_PROP_CCITTK, nCcittK);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("tif"));
-                            record.mapProperties.insert(
-                                FPART_PROP_INFO,
-                                QString("%1 CCITT (%2 x %3) [%4]")
-                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
+                            record.mapProperties.insert(FPART_PROP_INFO,
+                                                        QString("%1 CCITT (%2 x %3) [%4]")
+                                                            .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent)));
                         } else {
                             // Raw pixel data: will be converted to PNG during unpack
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD2, decompressMethod);
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_IMAGEDATA);
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("png"));
-                            record.mapProperties.insert(
-                                FPART_PROP_INFO,
-                                QString("%1 RAW (%2 x %3) [%4] %5 %6")
-                                    .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight), QString::number(nBitsPerComponent), sColorSpace, sFilter));
+                            record.mapProperties.insert(FPART_PROP_INFO, QString("%1 RAW (%2 x %3) [%4] %5 %6")
+                                                                             .arg(tr("Image"), QString::number(nWidth), QString::number(nHeight),
+                                                                                  QString::number(nBitsPerComponent), sColorSpace, sFilter));
                         }
                     } else {
                         // Non-image stream: set extension and info based on filter/subtype/metadata
@@ -1942,8 +1939,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                                 QByteArray baHeader = destBuffer.data();
                                 if (baHeader.size() >= 40) {
-                                    quint32 nSig = ((quint8)baHeader.at(36) << 24) | ((quint8)baHeader.at(37) << 16) |
-                                                   ((quint8)baHeader.at(38) << 8) | (quint8)baHeader.at(39);
+                                    quint32 nSig =
+                                        ((quint8)baHeader.at(36) << 24) | ((quint8)baHeader.at(37) << 16) | ((quint8)baHeader.at(38) << 8) | (quint8)baHeader.at(39);
                                     bIsICC = (nSig == 0x61637370);
                                 }
                             }
@@ -2012,8 +2009,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     if ((nParenOpen != -1) && (nParenClose != -1) && (nParenClose > nParenOpen)) {
                         qint32 nObjId = sName.mid(nParenOpen + 1, nParenClose - nParenOpen - 1).toInt();
                         if (stPaletteObjectIds.contains(nObjId)) {
-                            listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD2,
-                                listResult[r].mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE));
+                            listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD2, listResult[r].mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE));
                             listResult[r].mapProperties.insert(FPART_PROP_EXT, QStringLiteral("pal"));
                             listResult[r].mapProperties.insert(FPART_PROP_FILETYPE, FT_PAL);
                             listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_PALETTE);
