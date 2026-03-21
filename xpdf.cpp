@@ -96,7 +96,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
 {
     QElapsedTimer timer;
     timer.start();
-    qDebug() << "[XPDF] findObjects: start, offset" << nOffset << "size" << nSize << "deepScan" << bDeepScan;
+    // qDebug() << "[XPDF] findObjects: start, offset" << nOffset << "size" << nSize << "deepScan" << bDeepScan;
 
     qint64 nFileSize = getSize();
     if (nSize == -1) {
@@ -168,7 +168,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
         }
     }
 
-    qDebug() << "[XPDF] findObjects: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
+    // qDebug() << "[XPDF] findObjects: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
 
     return listResult;
 }
@@ -226,7 +226,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
 {
     QElapsedTimer timer;
     timer.start();
-    qDebug() << "[XPDF] getObjectsFromStartxref: start, xrefOffset" << pStartxref->nXrefOffset;
+    // qDebug() << "[XPDF] getObjectsFromStartxref: start, xrefOffset" << pStartxref->nXrefOffset;
 
     QList<XPDF::OBJECT> listResult;
 
@@ -302,7 +302,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
         }
     }
 
-    qDebug() << "[XPDF] getObjectsFromStartxref: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
+    // qDebug() << "[XPDF] getObjectsFromStartxref: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
 
     return listResult;
 }
@@ -896,7 +896,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
     QElapsedTimer timer;
     timer.start();
-    qDebug() << "[XPDF] findStartxrefs: start, offset" << nOffset << "fileSize" << getSize();
+    // qDebug() << "[XPDF] findStartxrefs: start, offset" << nOffset << "fileSize" << getSize();
 
     QList<XPDF::STARTHREF> listResult;
 
@@ -967,7 +967,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
         nOffset = nStartXref + 10;  // Get the last
     }
 
-    qDebug() << "[XPDF] findStartxrefs: done, found" << listResult.count() << "refs in" << timer.elapsed() << "ms";
+    // qDebug() << "[XPDF] findStartxrefs: done, found" << listResult.count() << "refs in" << timer.elapsed() << "ms";
 
     return listResult;
 }
@@ -1517,7 +1517,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 {
     QElapsedTimer timerTotal;
     timerTotal.start();
-    qDebug() << "[XPDF] getFileParts: start, fileParts" << nFileParts << "limit" << nLimit;
+    // qDebug() << "[XPDF] getFileParts: start, fileParts" << nFileParts << "limit" << nLimit;
 
     // TODO limit
 
@@ -1637,17 +1637,16 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         qint32 nStreamNumber = 0;
         QSet<qint32> stPaletteObjectIds;
 
-        qDebug() << "[XPDF] getFileParts: processing" << nNumberOfObjects << "objects for streams...";
         QElapsedTimer timerObjects;
         timerObjects.start();
 
         for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             const OBJECT &object = listObject.at(i);
 
-            if ((i > 0) && ((i % 100) == 0)) {
-                qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," << timerObjects.elapsed()
-                         << "ms";
-            }
+            // if ((i > 0) && ((i % 100) == 0)) {
+            //     qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," << timerObjects.elapsed()
+            //              << "ms";
+            // }
 
             if (nFileParts & FILEPART_OBJECT) {
                 FPART record = {};
@@ -2035,7 +2034,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         }
     }
 
-    qDebug() << "[XPDF] getFileParts: done, total parts" << listResult.count() << "in" << timerTotal.elapsed() << "ms";
+    // qDebug() << "[XPDF] getFileParts: done, total parts" << listResult.count() << "in" << timerTotal.elapsed() << "ms";
 
     return listResult;
 }
@@ -2044,7 +2043,7 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
 {
     QElapsedTimer timer;
     timer.start();
-    qDebug() << "[XPDF] initUnpack: start";
+    // qDebug() << "[XPDF] initUnpack: start";
 
     Q_UNUSED(mapProperties)
 
@@ -2071,12 +2070,12 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
         pState->pContext = pContext;
         pState->nNumberOfRecords = listStreams.count();
 
-        qDebug() << "[XPDF] initUnpack: done, streams" << listStreams.count() << "in" << timer.elapsed() << "ms";
+        // qDebug() << "[XPDF] initUnpack: done, streams" << listStreams.count() << "in" << timer.elapsed() << "ms";
 
         return true;
     }
 
-    qDebug() << "[XPDF] initUnpack: cancelled after" << timer.elapsed() << "ms";
+    // qDebug() << "[XPDF] initUnpack: cancelled after" << timer.elapsed() << "ms";
 
     return false;
 }
