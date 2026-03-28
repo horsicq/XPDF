@@ -1644,7 +1644,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
             const OBJECT &object = listObject.at(i);
 
             // if ((i > 0) && ((i % 100) == 0)) {
-            //     qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," << timerObjects.elapsed()
+            //     qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," <<
+            //     timerObjects.elapsed()
             //              << "ms";
             // }
 
