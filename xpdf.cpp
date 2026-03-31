@@ -2196,3 +2196,20 @@ bool XPDF::finishUnpack(UNPACK_STATE *pState, PDSTRUCT *pPdStruct)
 
     return true;
 }
+
+QList<QString> XPDF::getSearchSignatures()
+{
+    QList<QString> listResult;
+
+    listResult.append("%PDF");
+
+    return listResult;
+}
+
+XBinary *XPDF::createInstance(QIODevice *pDevice, bool bIsImage, XADDR nModuleAddress)
+{
+    Q_UNUSED(bIsImage)
+    Q_UNUSED(nModuleAddress)
+
+    return new XPDF(pDevice);
+}
