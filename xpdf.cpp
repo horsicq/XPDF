@@ -2201,7 +2201,7 @@ QList<QString> XPDF::getSearchSignatures()
 {
     QList<QString> listResult;
 
-    listResult.append("%PDF");
+    listResult.append("25'PDF-'");
 
     return listResult;
 }
