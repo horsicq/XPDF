@@ -50,6 +50,18 @@ bool XPDF::isValid(PDSTRUCT *pPdStruct)
     return bResult;
 }
 
+bool XPDF::isValid(QIODevice *pDevice)
+{
+    bool bResult = false;
+
+    if (pDevice) {
+        XPDF pdf(pDevice);
+        bResult = pdf.isValid();
+    }
+
+    return bResult;
+}
+
 QString XPDF::getVersion()
 {
     QString sResult;
@@ -1052,14 +1064,18 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
         } else if (osString.sString == QLatin1String("stream")) {
             STREAM stream = {};
             stream.nOffset = nOffset;
+            bool bHasStreamSize = false;
 
             // Detect indirect reference: sLength captured only the first token (e.g., "8" from "8 0 R").
             // Check the parts list for "sLength", "0", "R" sequence to determine if it's an indirect reference.
             bool bIndirectLength = false;
-            if (sLength.toInt()) {
+            bool bLengthTokenIsNumber = false;
+            qint64 nLengthToken = sLength.section(" ", 0, 0).toLongLong(&bLengthTokenIsNumber);
+
+            if (bLengthTokenIsNumber) {
                 qint32 nPartsCount = result.listParts.count();
                 for (qint32 nP = 0; nP < nPartsCount - 2; nP++) {
-                    if ((result.listParts.at(nP) == sLength) && (result.listParts.at(nP + 2) == QLatin1String("R"))) {
+                    if ((result.listParts.at(nP) == QString::number(nLengthToken)) && (result.listParts.at(nP + 2) == QLatin1String("R"))) {
                         if ((nP > 0) && (result.listParts.at(nP - 1) == QLatin1String("/Length"))) {
                             bIndirectLength = true;
                             sLength = result.listParts.at(nP) + " " + result.listParts.at(nP + 1) + " R";
@@ -1069,8 +1085,14 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                 }
             }
 
-            if (!bIndirectLength && sLength.toInt()) {
-                stream.nSize = sLength.toInt();
+            if (!bIndirectLength) {
+                bool bOk = false;
+                qint64 nStreamSize = sLength.toLongLong(&bOk);
+
+                if (bOk && (nStreamSize >= 0)) {
+                    stream.nSize = nStreamSize;
+                    bHasStreamSize = true;
+                }
             } else if (sLength.section(" ", 2, 2) == QLatin1String("R")) {
                 QString sPattern = sLength;
                 sPattern.replace("R", "obj");
@@ -1093,8 +1115,12 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                     skipPDFString(&nTmp, pPdStruct);
                     OS_STRING osLen = _readPDFStringPart_val(nTmp, pPdStruct);
 
-                    if (osLen.sString.toInt()) {
-                        stream.nSize = osLen.sString.toInt();
+                    bool bOk = false;
+                    qint64 nStreamSize = osLen.sString.toLongLong(&bOk);
+
+                    if (bOk && (nStreamSize >= 0)) {
+                        stream.nSize = nStreamSize;
+                        bHasStreamSize = true;
                     } else {
                         break;
                     }
@@ -1103,7 +1129,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
                 break;
             }
 
-            if (stream.nSize) {
+            if (bHasStreamSize) {
                 nOffset += stream.nSize;
                 skipPDFEnding(&nOffset, pPdStruct);
                 result.listStreams.append(stream);

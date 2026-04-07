@@ -65,6 +65,7 @@ public:
     virtual ~XPDF();
 
     virtual bool isValid(PDSTRUCT *pPdStruct = nullptr) override;
+    static bool isValid(QIODevice *pDevice);
     virtual QString getVersion() override;
     virtual FT getFileType() override;
     virtual ENDIAN getEndian() override;
