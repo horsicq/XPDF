@@ -50,7 +50,7 @@ bool XPDF::isValid(PDSTRUCT *pPdStruct)
     return bResult;
 }
 
-bool XPDF::isValid(QIODevice *pDevice)
+bool XPDF::isValid(QIODevice *pDevice, PDSTRUCT *pPdStruct)
 {
     bool bResult = false;
 
@@ -2227,7 +2227,7 @@ QList<QString> XPDF::getSearchSignatures()
 {
     QList<QString> listResult;
 
-    listResult.append("25'PDF-'");
+    listResult.append("'%PDF-'");
 
     return listResult;
 }
@@ -2239,3 +2239,4 @@ XBinary *XPDF::createInstance(QIODevice *pDevice, bool bIsImage, XADDR nModuleAd
 
     return new XPDF(pDevice);
 }
+
