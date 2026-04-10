@@ -20,7 +20,7 @@
  */
 #include "xpdf.h"
 #include "xdecompress.h"
-#include <QElapsedTimer>
+#include <QRegularExpression>
 
 XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
 {
@@ -56,7 +56,7 @@ bool XPDF::isValid(QIODevice *pDevice, PDSTRUCT *pPdStruct)
 
     if (pDevice) {
         XPDF pdf(pDevice);
-        bResult = pdf.isValid();
+        bResult = pdf.isValid(pPdStruct);
     }
 
     return bResult;
@@ -106,10 +106,6 @@ XBinary::MODE XPDF::getMode()
 
 QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepScan, PDSTRUCT *pPdStruct)
 {
-    QElapsedTimer timer;
-    timer.start();
-    // qDebug() << "[XPDF] findObjects: start, offset" << nOffset << "size" << nSize << "deepScan" << bDeepScan;
-
     qint64 nFileSize = getSize();
     if (nSize == -1) {
         nSize = nFileSize - nOffset;
@@ -180,8 +176,6 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
         }
     }
 
-    // qDebug() << "[XPDF] findObjects: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
-
     return listResult;
 }
 
@@ -236,10 +230,6 @@ qint32 XPDF::skipPDFSpace(qint64 *pnOffset, PDSTRUCT *pPdStruct)
 
 QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, PDSTRUCT *pPdStruct)
 {
-    QElapsedTimer timer;
-    timer.start();
-    // qDebug() << "[XPDF] getObjectsFromStartxref: start, xrefOffset" << pStartxref->nXrefOffset;
-
     QList<XPDF::OBJECT> listResult;
 
     qint64 nTotalSize = getSize();
@@ -313,8 +303,6 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
             listResult.last().nSize = pStartxref->nXrefOffset - listResult.last().nOffset;
         }
     }
-
-    // qDebug() << "[XPDF] getObjectsFromStartxref: done, found" << listResult.count() << "objects in" << timer.elapsed() << "ms";
 
     return listResult;
 }
@@ -906,10 +894,6 @@ XBinary::_MEMORY_MAP XPDF::getMemoryMap(MAPMODE mapMode, PDSTRUCT *pPdStruct)
 
 QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 {
-    QElapsedTimer timer;
-    timer.start();
-    // qDebug() << "[XPDF] findStartxrefs: start, offset" << nOffset << "fileSize" << getSize();
-
     QList<XPDF::STARTHREF> listResult;
 
     const qint64 nFileSize = getSize();
@@ -937,14 +921,7 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
             OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
             QString sFooterHead = osEnd.sString;
-#if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
             sFooterHead.resize(5, QChar(' '));
-#else
-            sFooterHead.resize(5);
-            for (int i = osEnd.sString.length(); i < 5; i++) {
-                sFooterHead[i] = QChar(' ');
-            }
-#endif
 
             if (sFooterHead == QStringLiteral("%%EOF")) {
                 nCurrent += 5;
@@ -978,8 +955,6 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
 
         nOffset = nStartXref + 10;  // Get the last
     }
-
-    // qDebug() << "[XPDF] findStartxrefs: done, found" << listResult.count() << "refs in" << timer.elapsed() << "ms";
 
     return listResult;
 }
@@ -1314,6 +1289,31 @@ qint32 XPDF::getObjectID(const QString &sString)
     return static_cast<qint32>(n);
 }
 
+XBinary::XVARIANT XPDF::_parseValue(const QString &sValue)
+{
+    XVARIANT varValue;
+
+    const qlonglong ll = sValue.toLongLong();
+    if (ll) {
+        varValue.varType = XBinary::VT_INT64;
+        varValue.var = ll;
+    } else if (_isDateTime(sValue)) {
+        varValue.varType = XBinary::VT_DATETIME;
+        varValue.var = _getDateTime(sValue);
+    } else if (_isString(sValue)) {
+        varValue.varType = XBinary::VT_STRING;
+        varValue.var = _getString(sValue);
+    } else if (_isHex(sValue)) {
+        varValue.varType = XBinary::VT_HEX;
+        varValue.var = _getHex(sValue);
+    } else {
+        varValue.varType = XBinary::VT_VALUE;
+        varValue.var = sValue;
+    }
+
+    return varValue;
+}
+
 XBinary::XVARIANT XPDF::getFirstStringValueByKey(QList<QString> *pListStrings, const QString &sKey, PDSTRUCT *pPdStruct)
 {
     XBinary::XVARIANT varResult;
@@ -1324,27 +1324,7 @@ XBinary::XVARIANT XPDF::getFirstStringValueByKey(QList<QString> *pListStrings, c
         const QString &sCurrentKey = pListStrings->at(j);
 
         if (sCurrentKey == sKey) {
-            const QString &sValue = pListStrings->at(j + 1);
-            XVARIANT varValue;
-
-            // Preserve original "0" behavior (not treated as number)
-            qlonglong ll = sValue.toLongLong();
-            if (ll) {
-                varValue.varType = XBinary::VT_INT64;
-                varValue.var = ll;
-            } else if (_isDateTime(sValue)) {
-                varValue.varType = XBinary::VT_DATETIME;
-                varValue.var = _getDateTime(sValue);
-            } else if (_isString(sValue)) {
-                varValue.varType = XBinary::VT_STRING;
-                varValue.var = _getString(sValue);
-            } else if (_isHex(sValue)) {
-                varValue.varType = XBinary::VT_HEX;
-                varValue.var = _getHex(sValue);
-            } else {
-                varValue.varType = XBinary::VT_VALUE;
-                varValue.var = sValue;
-            }
+            XVARIANT varValue = _parseValue(pListStrings->at(j + 1));
 
             if (!varValue.var.isNull()) {
                 varResult = varValue;
@@ -1420,26 +1400,7 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const 
             const QString &sPart = record.listParts.at(j);
 
             if (sPart == sKey) {
-                const QString &sValue = record.listParts.at(j + 1);
-                XVARIANT varValue;
-
-                qlonglong ll = sValue.toLongLong();
-                if (ll) {
-                    varValue.varType = XBinary::VT_INT64;
-                    varValue.var = ll;
-                } else if (_isDateTime(sValue)) {
-                    varValue.varType = XBinary::VT_DATETIME;
-                    varValue.var = _getDateTime(sValue);
-                } else if (_isString(sValue)) {
-                    varValue.varType = XBinary::VT_STRING;
-                    varValue.var = _getString(sValue);
-                } else if (_isHex(sValue)) {
-                    varValue.varType = XBinary::VT_HEX;
-                    varValue.var = _getHex(sValue);
-                } else {
-                    varValue.varType = XBinary::VT_VALUE;
-                    varValue.var = sValue;
-                }
+                XVARIANT varValue = _parseValue(record.listParts.at(j + 1));
 
                 if (!varValue.var.isNull()) {
                     const QString key = varValue.var.toString();
@@ -1491,21 +1452,17 @@ QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
     if ((nCurrentOffset < nFileSize) && (read_uint8(nCurrentOffset) == '%')) {
         ++nCurrentOffset;
 
-        QByteArray baData;
-        baData.reserve(40);
-
         const qint64 nMaxRead = qMin<qint64>(40, nFileSize - nCurrentOffset);
-        for (qint32 i = 0; (i < nMaxRead) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
-            quint8 nChar = read_uint8(nCurrentOffset + i);
+        QByteArray baData = read_array(nCurrentOffset, nMaxRead);
 
-            if ((nChar == 13) || (nChar == 10) || (nChar == 0)) {
-                break;
-            }
-
-            baData.append(static_cast<char>(nChar));
+        qint32 nLen = 0;
+        while (nLen < baData.size()) {
+            quint8 nChar = static_cast<quint8>(baData.at(nLen));
+            if ((nChar == 13) || (nChar == 10) || (nChar == 0)) break;
+            ++nLen;
         }
 
-        sResult = baData.toHex();
+        sResult = baData.left(nLen).toHex();
     }
 
     return sResult;
@@ -1541,11 +1498,7 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
 
 QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDSTRUCT *pPdStruct)
 {
-    QElapsedTimer timerTotal;
-    timerTotal.start();
-    // qDebug() << "[XPDF] getFileParts: start, fileParts" << nFileParts << "limit" << nLimit;
-
-    // TODO limit
+    Q_UNUSED(nLimit)  // TODO limit
 
     QList<XBinary::FPART> listResult;
 
@@ -1663,17 +1616,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         qint32 nStreamNumber = 0;
         QSet<qint32> stPaletteObjectIds;
 
-        QElapsedTimer timerObjects;
-        timerObjects.start();
-
         for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             const OBJECT &object = listObject.at(i);
-
-            // if ((i > 0) && ((i % 100) == 0)) {
-            //     qDebug() << "[XPDF] getFileParts: processed" << i << "/" << nNumberOfObjects << "objects," << nStreamNumber << "streams so far," <<
-            //     timerObjects.elapsed()
-            //              << "ms";
-            // }
 
             if (nFileParts & FILEPART_OBJECT) {
                 FPART record = {};
@@ -2061,17 +2005,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         }
     }
 
-    // qDebug() << "[XPDF] getFileParts: done, total parts" << listResult.count() << "in" << timerTotal.elapsed() << "ms";
-
     return listResult;
 }
 
 bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &mapProperties, PDSTRUCT *pPdStruct)
 {
-    QElapsedTimer timer;
-    timer.start();
-    // qDebug() << "[XPDF] initUnpack: start";
-
     Q_UNUSED(mapProperties)
 
     if (!pState) {
@@ -2097,12 +2035,8 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
         pState->pContext = pContext;
         pState->nNumberOfRecords = listStreams.count();
 
-        // qDebug() << "[XPDF] initUnpack: done, streams" << listStreams.count() << "in" << timer.elapsed() << "ms";
-
         return true;
     }
-
-    // qDebug() << "[XPDF] initUnpack: cancelled after" << timer.elapsed() << "ms";
 
     return false;
 }
@@ -2129,18 +2063,10 @@ XBinary::ARCHIVERECORD XPDF::infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStru
     result.nStreamOffset = stream.nFileOffset;
     result.nStreamSize = stream.nFileSize;
 
-    // Generate filename from stream name
+    // Generate filename from stream name, replacing invalid filename characters
     QString sFileName = stream.sName;
-    // Replace invalid filename characters
-    sFileName = sFileName.replace(QLatin1Char('/'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('\\'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char(':'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('*'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('?'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('"'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('<'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('>'), QLatin1Char('_'));
-    sFileName = sFileName.replace(QLatin1Char('|'), QLatin1Char('_'));
+    static const QRegularExpression reInvalidChars(QStringLiteral("[/\\\\:*?\"<>|]"));
+    sFileName.replace(reInvalidChars, QStringLiteral("_"));
 
     // Add extension based on file type or compression
     HANDLE_METHOD primaryMethod = (HANDLE_METHOD)stream.mapProperties.value(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_STORE).toInt();
