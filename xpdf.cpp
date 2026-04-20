@@ -920,10 +920,8 @@ QList<XPDF::STARTHREF> XPDF::findStartxrefs(qint64 nOffset, PDSTRUCT *pPdStruct)
             nCurrent += osOffset.nSize;
 
             OS_STRING osEnd = _readPDFString(nCurrent, 20, pPdStruct);
-            QString sFooterHead = osEnd.sString;
-            sFooterHead.resize(5, QChar(' '));
 
-            if (sFooterHead == QStringLiteral("%%EOF")) {
+            if (osEnd.sString.startsWith(QStringLiteral("%%EOF"))) {
                 nCurrent += 5;
 
                 // Skip optional CR and LF, bounds-checked
