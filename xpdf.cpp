@@ -1983,7 +1983,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             listResult[r].mapProperties.insert(FPART_PROP_EXT, QStringLiteral("pal"));
                             listResult[r].mapProperties.insert(FPART_PROP_FILETYPE, FT_PAL);
                             listResult[r].mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_PALETTE);
-                            listResult[r].mapProperties.insert(FPART_PROP_INFO, tr("Color palette (PAL)"));
+                            listResult[r].mapProperties.insert(FPART_PROP_INFO, tr("Color palette") + QString(" (PAL)"));
                         }
                     }
                 }
