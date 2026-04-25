@@ -2163,4 +2163,3 @@ XBinary *XPDF::createInstance(QIODevice *pDevice, bool bIsImage, XADDR nModuleAd
 
     return new XPDF(pDevice);
 }
-

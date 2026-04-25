@@ -139,4 +139,3 @@ private:
 };
 
 #endif  // XPDF_H
-
