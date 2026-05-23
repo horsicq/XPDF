@@ -1735,7 +1735,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_JPEG);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("jpg"));
                             record.mapProperties.insert(FPART_PROP_INFO, QString("%1 JPEG (%2 x %3) [%4] %5")
-                                                                             .arg(tr("Image")).arg(QString::number(nWidth)).arg(QString::number(nHeight)).arg(QString::number(nBitsPerComponent)).arg(sColorSpace));
+                                                                             .arg(tr("Image"))
+                                                                             .arg(QString::number(nWidth))
+                                                                             .arg(QString::number(nHeight))
+                                                                             .arg(QString::number(nBitsPerComponent))
+                                                                             .arg(sColorSpace));
                         } else if (sFilter == QLatin1String("/CCITTFaxDecode")) {
                             qint32 nCcittK = -1;
                             XBinary::XVARIANT varK = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/K"), pPdStruct);
@@ -1745,16 +1749,23 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_CCITTIMAGE);
                             record.mapProperties.insert(FPART_PROP_CCITTK, nCcittK);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("tif"));
-                            record.mapProperties.insert(FPART_PROP_INFO,
-                                                        QString("%1 CCITT (%2 x %3) [%4]")
-                                                            .arg(tr("Image")).arg(QString::number(nWidth)).arg(QString::number(nHeight)).arg(QString::number(nBitsPerComponent)));
+                            record.mapProperties.insert(FPART_PROP_INFO, QString("%1 CCITT (%2 x %3) [%4]")
+                                                                             .arg(tr("Image"))
+                                                                             .arg(QString::number(nWidth))
+                                                                             .arg(QString::number(nHeight))
+                                                                             .arg(QString::number(nBitsPerComponent)));
                         } else {
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD2, decompressMethod);
                             record.mapProperties.insert(FPART_PROP_HANDLEMETHOD, HANDLE_METHOD_PDF_IMAGEDATA);
                             record.mapProperties.insert(FPART_PROP_FILETYPE, XBinary::FT_PNG);
                             record.mapProperties.insert(FPART_PROP_EXT, QStringLiteral("png"));
                             record.mapProperties.insert(FPART_PROP_INFO, QString("%1 RAW (%2 x %3) [%4] %5 %6")
-                                                                             .arg(tr("Image")).arg(QString::number(nWidth)).arg(QString::number(nHeight)).arg(QString::number(nBitsPerComponent)).arg(sColorSpace).arg(sFilter));
+                                                                             .arg(tr("Image"))
+                                                                             .arg(QString::number(nWidth))
+                                                                             .arg(QString::number(nHeight))
+                                                                             .arg(QString::number(nBitsPerComponent))
+                                                                             .arg(sColorSpace)
+                                                                             .arg(sFilter));
                         }
                     } else {
                         if (sSubtype == QLatin1String("/XML")) {
