@@ -29,6 +29,12 @@ class XPDF : public XBinary {
     Q_OBJECT
 
 public:
+    struct INTERNAL_INFO : XBinary::INTERNAL_INFO {};
+
+    virtual bool handleInternalInfo(PDSTRUCT *pPdStruct) override;
+    virtual void *getInternalInfo(PDSTRUCT *pPdStruct) override;
+    virtual void setInternalInfo(void *pInternalInfo) override;
+
     enum TYPE {
         TYPE_UNKNOWN = 0,
         TYPE_DOCUMENT
@@ -118,6 +124,7 @@ public:
     QString getFilters(PDSTRUCT *pPdStruct = nullptr);
     QString getInfo(PDSTRUCT *pPdStruct = nullptr) override;
 
+    virtual QMap<UNPACK_PROP, QVariant> getDefaultUnpackProperties() override;
     bool initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &mapProperties, PDSTRUCT *pPdStruct = nullptr) override;
     ARCHIVERECORD infoCurrent(UNPACK_STATE *pState, PDSTRUCT *pPdStruct = nullptr) override;
     bool unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPdStruct = nullptr) override;
@@ -134,6 +141,9 @@ private:
         QList<XBinary::FPART> listStreams;
         qint32 nCurrentStreamIndex;
     };
+private:
+    INTERNAL_INFO m_internalInfo;
+
 };
 
 #endif  // XPDF_H

@@ -1872,6 +1872,13 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
     return listResult;
 }
 
+QMap<XBinary::UNPACK_PROP, QVariant> XPDF::getDefaultUnpackProperties()
+{
+    QMap<XBinary::UNPACK_PROP, QVariant> result = XBinary::getDefaultUnpackProperties();
+
+    return result;
+}
+
 bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &mapProperties, PDSTRUCT *pPdStruct)
 {
     Q_UNUSED(mapProperties)
@@ -2021,4 +2028,41 @@ XBinary *XPDF::createInstance(QIODevice *pDevice, bool bIsImage, XADDR nModuleAd
     Q_UNUSED(nModuleAddress)
 
     return new XPDF(pDevice);
+}
+
+bool XPDF::handleInternalInfo(PDSTRUCT *pPdStruct)
+{
+    bool bResult = true;
+
+    if (!isInternalInfoHandled()) {
+        bResult = XBinary::handleInternalInfo(pPdStruct);
+
+        if (bResult) {
+            static_cast<XBinary::INTERNAL_INFO &>(m_internalInfo) =
+                *static_cast<XBinary::INTERNAL_INFO *>(XBinary::getInternalInfo(pPdStruct));
+            setIsInternalInfoHandled(true);
+        }
+    }
+
+    return bResult;
+}
+
+void *XPDF::getInternalInfo(PDSTRUCT *pPdStruct)
+{
+    handleInternalInfo(pPdStruct);
+
+    return &m_internalInfo;
+}
+
+void XPDF::setInternalInfo(void *pInternalInfo)
+{
+    if (pInternalInfo) {
+        m_internalInfo = *static_cast<INTERNAL_INFO *>(pInternalInfo);
+        XBinary::setInternalInfo(static_cast<XBinary::INTERNAL_INFO *>(&m_internalInfo));
+        setIsInternalInfoHandled(true);
+    } else {
+        m_internalInfo = INTERNAL_INFO();
+        XBinary::setInternalInfo(nullptr);
+        setIsInternalInfoHandled(false);
+    }
 }
