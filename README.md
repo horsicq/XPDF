@@ -3,8 +3,9 @@
 ## PDF JavaScript emulator (`xjs*`)
 
 Self-contained JavaScript emulator for PDF/Acrobat scripts (malware triage / deobfuscation).
-Built as part of XPDF; its use in `xpdf.cpp` is gated by `USE_PDFJSEMUL`
-(CMake `WITH_PDFJSEMUL`, qmake `XCONFIG += use_pdfjsemul`).
+Opt-in: the `xjs*` files are compiled into XPDF, and `USE_PDFJSEMUL` defined, only when an app
+asks for them with CMake `-DWITH_PDFJSEMUL=ON` or qmake `XCONFIG += use_pdfjsemul`.
+With it off, nothing of the emulator is built and `XPDF::getJavaScriptInfoString()` returns empty.
 
 Lexes, parses and **executes** embedded PDF JavaScript through a bounded tree-walking interpreter
 with an Acrobat DOM (`app`, `util`, `this`/Doc, `Collab`, `spell`, `console`, `Math`, `String`, ...).

@@ -12,14 +12,22 @@ set(XPDF_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/xpdf_def.h
     ${CMAKE_CURRENT_LIST_DIR}/xpdfcrypt.cpp
     ${CMAKE_CURRENT_LIST_DIR}/xpdfcrypt.h
-    # PDF JavaScript emulator. Compiled with XPDF; its use in xpdf.cpp is gated by USE_PDFJSEMUL.
-    ${CMAKE_CURRENT_LIST_DIR}/xjsast.h
-    ${CMAKE_CURRENT_LIST_DIR}/xjslexer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/xjslexer.h
-    ${CMAKE_CURRENT_LIST_DIR}/xjsparser.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/xjsparser.h
-    ${CMAKE_CURRENT_LIST_DIR}/xjsinterpreter.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/xjsinterpreter.h
-    ${CMAKE_CURRENT_LIST_DIR}/xjsemul.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/xjsemul.h
 )
+
+# PDF JavaScript emulator (xjs*). Built into XPDF only when an app sets WITH_PDFJSEMUL;
+# its use in xpdf.cpp is gated by the USE_PDFJSEMUL define set here.
+if (WITH_PDFJSEMUL)
+    add_definitions(-DUSE_PDFJSEMUL)
+    set(XPDF_SOURCES
+        ${XPDF_SOURCES}
+        ${CMAKE_CURRENT_LIST_DIR}/xjsast.h
+        ${CMAKE_CURRENT_LIST_DIR}/xjslexer.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/xjslexer.h
+        ${CMAKE_CURRENT_LIST_DIR}/xjsparser.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/xjsparser.h
+        ${CMAKE_CURRENT_LIST_DIR}/xjsinterpreter.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/xjsinterpreter.h
+        ${CMAKE_CURRENT_LIST_DIR}/xjsemul.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/xjsemul.h
+    )
+endif()
