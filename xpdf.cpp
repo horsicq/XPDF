@@ -23,7 +23,7 @@
 #include <QBuffer>
 #include <QRegularExpression>
 #include <QTimeZone>
-#ifdef USE_XJS
+#ifdef USE_PDFJSEMUL
 #include "xjsemul.h"
 #endif
 
@@ -2446,7 +2446,7 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
 
 QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct)
 {
-#ifdef USE_XJS
+#ifdef USE_PDFJSEMUL
     QStringList listScripts;
 
     const qint32 nCount = pListObjects->count();

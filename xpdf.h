@@ -152,7 +152,7 @@ public:
     QByteArray decryptContent(const QByteArray &baData, quint64 nObjNum, quint32 nGeneration = 0);
     QString getDecryptedMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
     // Extract embedded JavaScript (/JS inline strings, hex, or indirect streams) and emulate it via XJSEmul
-    // (only when built with USE_XJS; otherwise returns empty). Reveals deobfuscated payloads + exploit APIs.
+    // (only when built with USE_PDFJSEMUL; otherwise returns empty). Reveals deobfuscated payloads + exploit APIs.
     QString getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
     QString getEncryptionInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
     QString getLinearizedInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
