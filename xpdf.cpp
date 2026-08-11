@@ -178,7 +178,10 @@ bool decompressPdfBuffer(const QByteArray &baData, XBinary::HANDLE_METHOD handle
 // Apply a filter chain (e.g. [/ASCII85Decode /FlateDecode]) in order. Stops at the first filter that has
 // no decoder here (image codec / unknown), returning whatever was decoded so far. Returns true if any
 // stage ran. This is what makes cascaded streams (a common obfuscation) decode instead of staying stored.
-bool decompressPdfChain(const QByteArray &baData, const QStringList &listFilters, QByteArray *pbaResult, XBinary::PDSTRUCT *pPdStruct)
+// nMaxOutput bounds EACH stage's inflated output so a decompression bomb (a tiny FlateDecode expanding to
+// gigabytes, possibly compounded across a cascade and across many objects) cannot exhaust memory during triage.
+bool decompressPdfChain(const QByteArray &baData, const QStringList &listFilters, QByteArray *pbaResult, XBinary::PDSTRUCT *pPdStruct,
+                        qint64 nMaxOutput = 100 * 1024 * 1024)
 {
     QByteArray baCurrent = baData;
     bool bAny = false;
@@ -190,7 +193,7 @@ bool decompressPdfChain(const QByteArray &baData, const QStringList &listFilters
         }
 
         QByteArray baNext;
-        if (decompressPdfBuffer(baCurrent, handleMethod, -1, &baNext, pPdStruct)) {
+        if (decompressPdfBuffer(baCurrent, handleMethod, nMaxOutput, &baNext, pPdStruct)) {
             baCurrent = baNext;
             bAny = true;
         } else {
@@ -314,6 +317,162 @@ quint32 readUInt32BE(const QByteArray &baData, qint32 nOffset)
            (static_cast<quint32>(static_cast<quint8>(baData.at(nOffset + 2))) << 8) | static_cast<quint32>(static_cast<quint8>(baData.at(nOffset + 3)));
 }
 
+// Parse a PDF string value ("(...)" literal or "<hex>") EXACTLY into bytes, starting at nPos in baBuf.
+// Unlike the streaming token reader this is null-safe and decodes octal \ddd and all backslash escapes --
+// essential for binary values like the encryption /O /U and encrypted string content.
+QByteArray parsePdfStringExact(const QByteArray &baBuf, qint32 nPos)
+{
+    QByteArray baResult;
+    const qint32 nSize = baBuf.size();
+    if ((nPos < 0) || (nPos >= nSize)) {
+        return baResult;
+    }
+
+    const char cOpen = baBuf.at(nPos);
+
+    if (cOpen == '<') {
+        qint32 nEnd = baBuf.indexOf('>', nPos + 1);
+        if (nEnd == -1) {
+            nEnd = nSize;
+        }
+        QByteArray baHex = baBuf.mid(nPos + 1, nEnd - nPos - 1);
+        baHex.replace(" ", "").replace("\t", "").replace("\r", "").replace("\n", "").replace("\f", "");
+        return QByteArray::fromHex(baHex);
+    }
+
+    if (cOpen != '(') {
+        return baResult;
+    }
+
+    qint32 i = nPos + 1;
+    qint32 nDepth = 0;
+
+    while (i < nSize) {
+        const char c = baBuf.at(i);
+
+        if (c == '\\') {
+            ++i;
+            if (i >= nSize) {
+                break;
+            }
+            const char e = baBuf.at(i);
+            if ((e >= '0') && (e <= '7')) {
+                qint32 nVal = e - '0';
+                ++i;
+                for (qint32 k = 0; (k < 2) && (i < nSize) && (baBuf.at(i) >= '0') && (baBuf.at(i) <= '7'); ++k) {
+                    nVal = (nVal * 8) + (baBuf.at(i) - '0');
+                    ++i;
+                }
+                baResult.append(static_cast<char>(nVal & 0xFF));
+                continue;
+            }
+            switch (e) {
+                case 'n': baResult.append('\n'); break;
+                case 'r': baResult.append('\r'); break;
+                case 't': baResult.append('\t'); break;
+                case 'b': baResult.append('\b'); break;
+                case 'f': baResult.append('\f'); break;
+                case '\n': break;  // line continuation
+                case '\r':
+                    if ((i + 1 < nSize) && (baBuf.at(i + 1) == '\n')) ++i;
+                    break;
+                default: baResult.append(e); break;  // \( \) \\ and any other
+            }
+            ++i;
+            continue;
+        }
+
+        if (c == '(') {
+            ++nDepth;
+            baResult.append(c);
+            ++i;
+            continue;
+        }
+        if (c == ')') {
+            if (nDepth == 0) {
+                break;
+            }
+            --nDepth;
+            baResult.append(c);
+            ++i;
+            continue;
+        }
+
+        baResult.append(c);
+        ++i;
+    }
+
+    return baResult;
+}
+
+// Find "sKey" as a name token in baBuf (followed by whitespace or a value delimiter, so "/O" won't match
+// inside "/OE") and return the exact bytes of its string value. Empty if not a "(...)"/"<hex>" value.
+QByteArray rawStringValueInBuffer(const QByteArray &baBuf, const char *sKey)
+{
+    // Locate a name key ("/U") in the /Encrypt object bytes and return its literal/hex string value EXACTLY.
+    // We deliberately do NOT try to tokenize/skip preceding string values: the /O//U values are raw binary that
+    // frequently contains unescaped '(' ')' '\' bytes, and a "skip the string" walker desyncs on them (which
+    // silently loses the following key). A textual indexOf is robust to that. The only residual hazard -- a
+    // random preceding value that literally contains "/U(" -- is vanishingly unlikely and merely a false-negative.
+    const qint32 nKeyLen = static_cast<qint32>(qstrlen(sKey));
+    const qint32 nSize = baBuf.size();
+    qint32 nFrom = 0;
+
+    while (nFrom < nSize) {
+        const qint32 nPos = baBuf.indexOf(sKey, nFrom);
+        if (nPos == -1) {
+            break;
+        }
+
+        qint32 i = nPos + nKeyLen;
+        // Name boundary: the char after the key must not be an alnum (else it is a longer name like /UE vs /U).
+        bool bBoundary = (i >= nSize);
+        if (!bBoundary) {
+            const char cNext = baBuf.at(i);
+            bBoundary = !(((cNext >= 'A') && (cNext <= 'Z')) || ((cNext >= 'a') && (cNext <= 'z')) || ((cNext >= '0') && (cNext <= '9')));
+        }
+
+        if (bBoundary) {
+            while ((i < nSize) && ((baBuf.at(i) == ' ') || (baBuf.at(i) == '\t') || (baBuf.at(i) == '\r') || (baBuf.at(i) == '\n') || (baBuf.at(i) == '\f'))) {
+                ++i;
+            }
+            if ((i < nSize) && ((baBuf.at(i) == '(') || (baBuf.at(i) == '<'))) {
+                return parsePdfStringExact(baBuf, i);
+            }
+        }
+
+        nFrom = nPos + nKeyLen;
+    }
+
+    return QByteArray();
+}
+
+// Resolve the /CFM (crypt-filter method) of the crypt filter NAMED by sFilterName (e.g. the /StmF value "/StdCF"),
+// scoped to that filter's sub-dictionary: find the filter name after "/CF", then the first "/CFM" that follows it.
+// Returns e.g. "/AESV2" / "/AESV3" / "/V2", or empty if not found. This avoids the flattened-list "last /CFM wins"
+// hazard when an /Encrypt dict defines multiple crypt filters with different methods.
+QString cryptFilterMethodByName(QList<QString> *pListParts, const QString &sFilterName)
+{
+    if ((pListParts == nullptr) || sFilterName.isEmpty()) {
+        return QString();
+    }
+    const qint32 nCount = pListParts->count();
+    const qint32 nCFPos = pListParts->indexOf(QLatin1String("/CF"));
+    qint32 nFilterPos = pListParts->indexOf(sFilterName, (nCFPos >= 0) ? nCFPos : 0);
+    if (nFilterPos < 0) {
+        nFilterPos = pListParts->indexOf(sFilterName);  // fallback: anywhere
+    }
+    if (nFilterPos < 0) {
+        return QString();
+    }
+    for (qint32 i = nFilterPos + 1; i < nCount; ++i) {
+        if (pListParts->at(i) == QLatin1String("/CFM")) {
+            return ((i + 1) < nCount) ? pListParts->at(i + 1) : QString();
+        }
+    }
+    return QString();
+}
+
 // Read a big-endian unsigned integer of nWidth bytes (0..8) at nOffset from a buffer. Width 0 -> default value per xref spec.
 quint64 readBEValue(const quint8 *pData, qint64 nPos, qint32 nWidth)
 {
@@ -333,6 +492,7 @@ XPDF::XPDF(QIODevice *pDevice) : XBinary(pDevice)
     m_nHeaderOffset = -2;  // -2: not computed, -1: no header, >=0: header offset
     m_bDecryptChecked = false;
     m_bDecryptReady = false;
+    m_bDecryptOwner = false;
 }
 
 qint64 XPDF::getHeaderOffset(PDSTRUCT *pPdStruct)
@@ -447,6 +607,7 @@ QList<XPDF::OBJECT> XPDF::findObjects(qint64 nOffset, qint64 nSize, bool bDeepSc
                     OBJECT objectRecord = {};
                     objectRecord.nOffset = nCurrentOffset;
                     objectRecord.nID = nID;
+                    objectRecord.nGen = static_cast<quint32>(getObjectGen(osString.sString));
                     objectRecord.nSize = (nEndObjOffset + osEndObj.nSize) - nCurrentOffset;
 
                     listResult.append(objectRecord);
@@ -614,6 +775,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
             OBJECT object;
             object.nOffset = iterator.key();
             object.nID = iterator.value();
+            object.nGen = 0;  // generation is re-parsed from the object header when needed (handleXpart)
             object.nSize = 0;
 
             listResult.append(object);
@@ -830,6 +992,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
                     if ((nObjOffset > 0) && (nObjOffset < nFileSize) && (!stSeenIds.contains(nObjId))) {
                         OBJECT obj;
                         obj.nID = nObjId;
+                        obj.nGen = 0;  // generation is re-parsed from the object header when needed (handleXpart)
                         obj.nOffset = nObjOffset;
                         obj.nSize = 0;
                         listResult.append(obj);
@@ -867,6 +1030,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
             OBJECT obj;
             obj.nOffset = iterator.key();
             obj.nID = iterator.value();
+            obj.nGen = 0;  // generation is re-parsed from the object header when needed (handleXpart)
             obj.nSize = 0;
             listResult.append(obj);
         }
@@ -1183,9 +1347,18 @@ XBinary::OS_STRING XPDF::_readPDFStringPart(qint64 nOffset, PDSTRUCT *pPdStruct)
         return result;
     }
 
+    // Consume ALL trailing PDF whitespace (NUL/TAB/LF/FF/CR/SP) in any order, so a "value\n  /NextKey"
+    // layout (space then newline then spaces) doesn't leave the next read starting on whitespace -> empty
+    // token -> premature dict end. The old skipSpace-then-skipEnding pair only handled "spaces then endings".
     qint32 nPos = nTokenEnd;
-    skipBufferPdfSpace(pData, nDataSize, &nPos);
-    skipBufferPdfEnding(pData, nDataSize, &nPos);
+    while (nPos < nDataSize) {
+        const quint8 nWsChar = static_cast<quint8>(pData[nPos]);
+        if ((nWsChar == ' ') || (nWsChar == '\t') || (nWsChar == '\f') || (nWsChar == '\n') || (nWsChar == '\r') || (nWsChar == 0)) {
+            ++nPos;
+        } else {
+            break;
+        }
+    }
     result.nSize = nPos;
 
     return result;
@@ -1273,10 +1446,19 @@ XBinary::OS_STRING XPDF::_readPDFStringPart_str(qint64 nOffset, PDSTRUCT *pPdStr
             if (nBufSize <= 0) break;
         }
 
+        // Safety cap for a malformed unterminated '(' so we don't swallow the rest of the file. Checked in BOTH
+        // the ASCII and UTF-16BE (bUnicode) paths -- a "(" + BOM + huge unclosed body must not grow without bound.
+        if (result.nSize > (32 * 1024 * 1024)) {
+            break;
+        }
+
         if (!bUnicode) {
             const quint8 nChar = pBuf[nBufPos];
 
-            if (isPdfStringTerminator(nChar)) {
+            // A "(...)" literal may legally contain NUL/CR/LF bytes (binary strings such as the encryption
+            // /O //U). Only stop at a terminator BEFORE the opening '(' (stray leading bytes); inside the
+            // string, only the matching unescaped ')' ends it -- otherwise the tokenizer desyncs on binary.
+            if (!bStart && isPdfStringTerminator(nChar)) {
                 break;
             }
 
@@ -1638,6 +1820,7 @@ XPDF::XPART XPDF::handleXpart(qint64 nOffset, qint32 nID, qint32 nPartLimit, PDS
         nOffset += osString.nSize;
 
         if (_isObject(osString.sString)) {
+            result.nGen = static_cast<quint32>(getObjectGen(osString.sString));
             qint32 nObj = 0;
             qint32 nCol = 0;
             qint32 nPartCount = 0;
@@ -2089,6 +2272,35 @@ qint32 XPDF::getObjectID(const QString &sString)
     return static_cast<qint32>(n);
 }
 
+qint32 XPDF::getObjectGen(const QString &sString)
+{
+    const qint32 nLen = sString.size();
+    qint32 nI = 0;
+
+    // Skip the object number (optional '-' then digits).
+    if ((nI < nLen) && (sString.at(nI) == QChar('-'))) {
+        ++nI;
+    }
+    while ((nI < nLen) && (sString.at(nI) >= QChar('0')) && (sString.at(nI) <= QChar('9'))) {
+        ++nI;
+    }
+    // Skip whitespace between the number and the generation.
+    while ((nI < nLen) && ((sString.at(nI) == QChar(' ')) || (sString.at(nI) == QChar('\t')) || (sString.at(nI) == QChar('\r')) ||
+                           (sString.at(nI) == QChar('\n')) || (sString.at(nI) == QChar('\f')))) {
+        ++nI;
+    }
+    // Read the generation.
+    qint64 nGen = 0;
+    bool bDigit = false;
+    while ((nI < nLen) && (sString.at(nI) >= QChar('0')) && (sString.at(nI) <= QChar('9'))) {
+        nGen = (nGen * 10) + (sString.at(nI).unicode() - '0');
+        ++nI;
+        bDigit = true;
+    }
+
+    return bDigit ? static_cast<qint32>(nGen) : 0;
+}
+
 XBinary::XVARIANT XPDF::_parseValue(const QString &sValue)
 {
     XVARIANT varValue;
@@ -2402,8 +2614,13 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
     // Encryption first: when the document is encrypted, the Info-dictionary strings are ciphertext, so
     // showing them as "metadata" is misleading noise -- suppress them and say so instead.
     const QString sEncryption = getEncryptionInfoString(&listObjects, pPdStruct);
+    // Populate m_security (V/R/P and the derived key) before reading permissions/metadata below.
+    const bool bDecrypted = !sEncryption.isEmpty() && setupDecryption(QByteArray(), pPdStruct);
     if (!sEncryption.isEmpty()) {
         listLines << (tr("Encrypted") + ": " + sEncryption);
+        if (m_security.nR != 0) {
+            listLines << (tr("Permissions") + ": " + XPDFCrypt::permissionsToString(m_security.nP));
+        }
     }
 
     if (sEncryption.isEmpty()) {
@@ -2411,9 +2628,17 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
         if (!sMeta.isEmpty()) {
             listLines << sMeta;
         }
-    } else if (setupDecryption(QByteArray(), pPdStruct)) {
-        // Owner-only-protected PDFs open with an empty user password: recover the metadata.
-        listLines << (tr("Decrypted") + " (" + tr("empty user password") + ")");
+    } else if (bDecrypted) {
+        // Describe how the file was unlocked: empty user password, a recovered weak password, or owner password.
+        QString sHow;
+        if (m_baDecryptPassword.isEmpty()) {
+            sHow = tr("empty user password");
+        } else if (m_bDecryptOwner) {
+            sHow = tr("owner password") + ": " + QString::fromLatin1(m_baDecryptPassword);
+        } else {
+            sHow = tr("user password") + ": " + QString::fromLatin1(m_baDecryptPassword);
+        }
+        listLines << (tr("Decrypted") + " (" + sHow + ")");
         const QString sDecMeta = getDecryptedMetaInfoString(&listObjects, pPdStruct);
         if (!sDecMeta.isEmpty()) {
             listLines << sDecMeta;
@@ -2447,6 +2672,9 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
 QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct)
 {
 #ifdef USE_PDFJSEMUL
+    // Enable decryption (empty user password) so encrypted /JS is recovered before emulation.
+    setupDecryption(QByteArray(), pPdStruct);
+
     QStringList listScripts;
 
     const qint32 nCount = pListObjects->count();
@@ -2462,11 +2690,11 @@ QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
             const QString &sVal = part.listParts.at(j + 1);
             QString sJs;
 
-            if (_isString(sVal)) {
-                sJs = _getString(sVal);
-            } else if (_isHex(sVal)) {
-                sJs = QString::fromLatin1(QByteArray::fromHex(_getHex(sVal).toLatin1()));
-            } else if (_isIndirectRef(sVal)) {
+            if (isEncryptedButLocked()) {
+                continue;  // encrypted document we could not unlock: never emit ciphertext as "JavaScript"
+            }
+
+            if (_isIndirectRef(sVal)) {
                 // /JS points at an indirect object whose stream holds the script.
                 const quint64 nId = static_cast<quint64>(sVal.section(QChar(' '), 0, 0).toLongLong());
                 const qint64 nOffset = resolveObjectOffset(nId, &m_mapObjIdOffset, part.nOffset, pPdStruct);
@@ -2476,6 +2704,9 @@ QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
                         const STREAM &stream = jsPart.listStreams.at(0);
                         if ((stream.nSize > 0) && (stream.nSize <= (getSize() - stream.nOffset))) {
                             QByteArray baRaw = read_array(stream.nOffset, stream.nSize);
+                            if (m_bDecryptReady && m_security.bStreamsEncrypted) {
+                                baRaw = decryptContent(baRaw, nId, jsPart.nGen);  // stream encrypted with its own id+gen
+                            }
                             const QStringList listFilters = _resolveFilterList(&(jsPart.listParts), QLatin1String("/Filter"), pPdStruct);
                             QByteArray baDecoded;
                             // Apply the full filter chain so cascaded (e.g. ASCII85+Flate) scripts decode.
@@ -2486,6 +2717,18 @@ QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
                         }
                     }
                 }
+            } else if (m_bDecryptReady) {
+                // Encrypted inline /JS string: read EXACT ciphertext from the object and decrypt with its id.
+                const QByteArray baObj = read_array(part.nOffset, qMin<qint64>(1048576, getSize() - part.nOffset));
+                const QByteArray baRaw = rawStringValueInBuffer(baObj, "/JS");
+                if (!baRaw.isEmpty()) {
+                    // Inline strings follow /StrF (not /StmF); decrypt only when strings are encrypted.
+                    sJs = m_security.bStringsEncrypted ? QString::fromLatin1(decryptContent(baRaw, part.nID, part.nGen)) : QString::fromLatin1(baRaw);
+                }
+            } else if (_isString(sVal)) {
+                sJs = _getString(sVal);
+            } else if (_isHex(sVal)) {
+                sJs = QString::fromLatin1(QByteArray::fromHex(_getHex(sVal).toLatin1()));
             }
 
             if (!sJs.trimmed().isEmpty() && !listScripts.contains(sJs)) {
@@ -2501,6 +2744,9 @@ QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
         if (!part.listParts.contains(QLatin1String("/ObjStm"))) {
             continue;
         }
+        if (isEncryptedButLocked()) {
+            continue;  // cannot decrypt: do not scan ciphertext for JS
+        }
 
         XPART full = handleXpart(part.nOffset, part.nID, -1, pPdStruct, true, &m_mapObjIdOffset);
         if (full.listStreams.isEmpty()) {
@@ -2513,6 +2759,9 @@ QString XPDF::getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
         }
 
         QByteArray baRaw = read_array(stream.nOffset, stream.nSize);
+        if (m_bDecryptReady && m_security.bStreamsEncrypted) {
+            baRaw = decryptContent(baRaw, part.nID, full.nGen);  // ObjStm stream encrypted with the container id+gen
+        }
         const QStringList listFilters = _resolveFilterList(&(full.listParts), QLatin1String("/Filter"), pPdStruct);
         QByteArray baDecoded;
         if (listFilters.isEmpty() || !decompressPdfChain(baRaw, listFilters, &baDecoded, pPdStruct)) {
@@ -2587,22 +2836,21 @@ QString XPDF::getEncryptionInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
 {
     QString sResult;
 
-    const qint32 nCount = pListObjects->count();
-
-    for (qint32 i = 0; (i < nCount) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
-        QList<QString> &listParts = (*pListObjects)[i].listParts;
-
-        // The Standard security handler dictionary is identified by "/Filter /Standard".
-        const qint32 nFilterPos = listParts.indexOf(QLatin1String("/Filter"));
-        if ((nFilterPos == -1) || ((nFilterPos + 1) >= listParts.count()) || (listParts.at(nFilterPos + 1) != QLatin1String("/Standard"))) {
-            continue;
-        }
+    // Describe the SAME authoritative /Encrypt dictionary that setupDecryption uses (trailer-referenced, newest
+    // revision), so the descriptor never diverges from what is actually decrypted.
+    const qint32 nEncIdx = findEncryptObjectIndex(pListObjects, pPdStruct);
+    if (nEncIdx >= 0) {
+        QList<QString> &listParts = (*pListObjects)[nEncIdx].listParts;
 
         qint32 nV = getFirstStringValueByKey(&listParts, QLatin1String("/V"), pPdStruct).var.toInt();
         const qint32 nR = getFirstStringValueByKey(&listParts, QLatin1String("/R"), pPdStruct).var.toInt();
         qint32 nLen = getFirstStringValueByKey(&listParts, QLatin1String("/Length"), pPdStruct).var.toInt();
         const XVARIANT vP = getFirstStringValueByKey(&listParts, QLatin1String("/P"), pPdStruct);
-        QString sCFM = getFirstStringValueByKey(&listParts, QLatin1String("/CFM"), pPdStruct).var.toString();
+        const QString sStmF = getFirstStringValueByKey(&listParts, QLatin1String("/StmF"), pPdStruct).var.toString();
+        QString sCFM = cryptFilterMethodByName(&listParts, sStmF);
+        if (sCFM.isEmpty()) {
+            sCFM = getFirstStringValueByKey(&listParts, QLatin1String("/CFM"), pPdStruct).var.toString();
+        }
 
         // /V can read 0 when its token falls past the binary /O//U strings; infer it from the revision.
         if (nV == 0) {
@@ -2611,14 +2859,18 @@ QString XPDF::getEncryptionInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
             else if (nR == 3) nV = 2;
             else if (nR == 2) nV = 1;
         }
-        // The crypt-filter /Length is in BYTES (16=AES-128, 32=AES-256); the top-level /Length is in bits.
-        // Normalise a small byte value to bits so the reported key length is correct.
-        if ((nLen > 0) && (nLen <= 40)) {
+        // The crypt-filter /Length is in BYTES (5=RC4-40, 16=AES-128, 32=AES-256); the top-level /Length is in
+        // bits (40/128/256). Key byte-counts are always < 40 and bit-counts are always >= 40, so scale up only
+        // strictly-small values -- this keeps a legitimate top-level "/Length 40" (RC4-40, R2) at 40, not 320.
+        if ((nLen > 0) && (nLen < 40)) {
             nLen = nLen * 8;
         }
 
         if (sCFM.startsWith(QLatin1Char('/'))) {
             sCFM = sCFM.mid(1);
+        }
+        if (sCFM == QLatin1String("V2")) {
+            sCFM = QStringLiteral("RC4");  // /V2 crypt-filter method == RC4
         }
         if (sCFM.isEmpty()) {
             if (nV >= 5) {
@@ -2639,8 +2891,6 @@ QString XPDF::getEncryptionInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
         if (!vP.var.isNull()) {
             sResult += QString(" P=%1").arg(vP.var.toLongLong());
         }
-
-        break;
     }
 
     return sResult;
@@ -2722,37 +2972,146 @@ QByteArray XPDF::findTrailerID(PDSTRUCT *pPdStruct)
     return QByteArray();
 }
 
-bool XPDF::setupDecryption(const QByteArray &baUserPassword, PDSTRUCT *pPdStruct)
+qint64 XPDF::findTrailerEncryptId(PDSTRUCT *pPdStruct)
 {
-    if (m_bDecryptChecked) {
-        return m_bDecryptReady;
+    // Trailer: << ... /Encrypt N G R ... >>. Raw-scan for the LAST (newest, highest-offset) occurrence and return
+    // its object id N. This is the authoritative pointer to the encryption dictionary, robust to incremental
+    // updates that leave stale /Encrypt object bodies elsewhere in the file.
+    const qint64 nFileSize = getSize();
+    qint64 nFrom = 0;
+    qint64 nResult = -1;
+
+    while (nFrom < nFileSize) {
+        const qint64 nPos = find_ansiString(nFrom, nFileSize - nFrom, "/Encrypt", pPdStruct);
+        if (nPos == -1) {
+            break;
+        }
+
+        const qint64 nChunk = qMin<qint64>(64, nFileSize - nPos);
+        const QByteArray baChunk = read_array(nPos, nChunk);
+        const qint32 nChunkSize = baChunk.size();
+
+        // Boundary: "/Encrypt" must be followed by whitespace (an indirect reference "N G R").
+        bool bBoundary = (nChunkSize <= 8);
+        if (!bBoundary) {
+            const char c = baChunk.at(8);
+            bBoundary = (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
+        }
+
+        if (bBoundary && (nChunkSize > 8)) {
+            qint32 i = 8;
+            while ((i < nChunkSize) && ((baChunk.at(i) == ' ') || (baChunk.at(i) == '\t') || (baChunk.at(i) == '\r') || (baChunk.at(i) == '\n'))) {
+                ++i;
+            }
+            qint64 nId = 0;
+            bool bDigit = false;
+            while ((i < nChunkSize) && (baChunk.at(i) >= '0') && (baChunk.at(i) <= '9')) {
+                nId = (nId * 10) + (baChunk.at(i) - '0');
+                ++i;
+                bDigit = true;
+            }
+            while ((i < nChunkSize) && ((baChunk.at(i) == ' ') || (baChunk.at(i) == '\t') || (baChunk.at(i) == '\r') || (baChunk.at(i) == '\n'))) {
+                ++i;
+            }
+            while ((i < nChunkSize) && (baChunk.at(i) >= '0') && (baChunk.at(i) <= '9')) {  // generation
+                ++i;
+            }
+            while ((i < nChunkSize) && ((baChunk.at(i) == ' ') || (baChunk.at(i) == '\t') || (baChunk.at(i) == '\r') || (baChunk.at(i) == '\n'))) {
+                ++i;
+            }
+            if (bDigit && (nId > 0) && (i < nChunkSize) && (baChunk.at(i) == 'R')) {
+                nResult = nId;  // keep the last (newest) trailer's /Encrypt id
+            }
+        }
+
+        nFrom = nPos + 8;
     }
-    m_bDecryptChecked = true;
-    m_bDecryptReady = false;
 
-    QList<XPART> listObjects = getParts(256, pPdStruct);
+    return nResult;
+}
 
-    const qint32 nCount = listObjects.count();
+qint32 XPDF::findEncryptObjectIndex(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct)
+{
+    const qint64 nEncryptId = findTrailerEncryptId(pPdStruct);
+    const qint64 nAuthOffset = (nEncryptId > 0) ? resolveObjectOffset(static_cast<quint64>(nEncryptId), &m_mapObjIdOffset, -1, pPdStruct) : -1;
+
+    qint32 nFallback = -1;
+    const qint32 nCount = pListObjects->count();
+
     for (qint32 i = 0; (i < nCount) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
-        QList<QString> &listParts = listObjects[i].listParts;
+        QList<QString> &listParts = (*pListObjects)[i].listParts;
 
         const qint32 nFilterPos = listParts.indexOf(QLatin1String("/Filter"));
         if ((nFilterPos == -1) || ((nFilterPos + 1) >= listParts.count()) || (listParts.at(nFilterPos + 1) != QLatin1String("/Standard"))) {
             continue;
         }
 
+        if (nFallback == -1) {
+            nFallback = i;  // first "/Filter /Standard" object (legacy fallback)
+        }
+
+        // Prefer the object the trailer /Encrypt points at, in its newest revision (matching file offset).
+        if (nEncryptId > 0) {
+            if (static_cast<qint64>((*pListObjects)[i].nID) != nEncryptId) {
+                continue;
+            }
+            if ((nAuthOffset >= 0) && ((*pListObjects)[i].nOffset != nAuthOffset)) {
+                continue;
+            }
+            return i;
+        }
+    }
+
+    return nFallback;
+}
+
+bool XPDF::setupDecryption(const QByteArray &baPassword, PDSTRUCT *pPdStruct)
+{
+    if (m_bDecryptReady) {
+        return true;  // already unlocked
+    }
+    // The empty-password call also runs the common-password sweep; re-run only if a new non-empty password arrives.
+    if (m_bDecryptChecked && baPassword.isEmpty()) {
+        return false;
+    }
+    m_bDecryptChecked = true;
+    m_bDecryptReady = false;
+
+    QList<XPART> listObjects = getParts(256, pPdStruct);
+
+    // Select the authoritative Standard /Encrypt dictionary via the trailer /Encrypt reference (newest revision),
+    // not merely the first "/Filter /Standard" object -- an incremental update or a decoy can leave a stale one.
+    const qint32 nEncIdx = findEncryptObjectIndex(&listObjects, pPdStruct);
+    if (nEncIdx >= 0) {
+        QList<QString> &listParts = listObjects[nEncIdx].listParts;
+
         XPDFCrypt::SECURITY security;
         security.nV = getFirstStringValueByKey(&listParts, QLatin1String("/V"), pPdStruct).var.toInt();
         security.nR = getFirstStringValueByKey(&listParts, QLatin1String("/R"), pPdStruct).var.toInt();
         security.nP = getFirstStringValueByKey(&listParts, QLatin1String("/P"), pPdStruct).var.toLongLong();
-        security.baO = _getRawBytesByKey(&listParts, QLatin1String("/O"));
-        security.baU = _getRawBytesByKey(&listParts, QLatin1String("/U"));
-        security.baOE = _getRawBytesByKey(&listParts, QLatin1String("/OE"));
-        security.baUE = _getRawBytesByKey(&listParts, QLatin1String("/UE"));
 
-        QString sCFM = getFirstStringValueByKey(&listParts, QLatin1String("/CFM"), pPdStruct).var.toString();
+        // /O /U /OE /UE are binary (nulls/octal escapes): read the object's raw bytes and parse EXACTLY.
+        const qint64 nEncOffset = listObjects[nEncIdx].nOffset;
+        const QByteArray baEncObj = read_array(nEncOffset, qMin<qint64>(8192, getSize() - nEncOffset));
+        security.baO = rawStringValueInBuffer(baEncObj, "/O");
+        security.baU = rawStringValueInBuffer(baEncObj, "/U");
+        security.baOE = rawStringValueInBuffer(baEncObj, "/OE");
+        security.baUE = rawStringValueInBuffer(baEncObj, "/UE");
+
+        // Crypt-filter dispatch (/V>=4). /StmF//StrF name the stream/string crypt filters; a value of /Identity
+        // means that class is left in the clear. Resolve the STREAM filter's /CFM scoped to its own sub-dict so a
+        // multi-filter /Encrypt dict doesn't pick the wrong method. For /V<4 there are no crypt filters (RC4,
+        // everything encrypted) -- /StmF//StrF are absent, so the flags default to encrypted.
+        const QString sStmF = getFirstStringValueByKey(&listParts, QLatin1String("/StmF"), pPdStruct).var.toString();
+        const QString sStrF = getFirstStringValueByKey(&listParts, QLatin1String("/StrF"), pPdStruct).var.toString();
+        security.bStreamsEncrypted = (sStmF != QLatin1String("/Identity"));
+        security.bStringsEncrypted = (sStrF != QLatin1String("/Identity"));
+
+        QString sCFM = cryptFilterMethodByName(&listParts, sStmF);
+        if (sCFM.isEmpty()) {
+            sCFM = getFirstStringValueByKey(&listParts, QLatin1String("/CFM"), pPdStruct).var.toString();
+        }
         security.bAES = sCFM.contains(QLatin1String("AES"));
-        security.bAES256 = (sCFM == QLatin1String("/AESV3")) || (security.nV >= 5);
 
         const QString sEncMeta = getFirstStringValueByKey(&listParts, QLatin1String("/EncryptMetadata"), pPdStruct).var.toString();
         security.bEncryptMetadata = (sEncMeta != QLatin1String("false"));
@@ -2765,24 +3124,75 @@ bool XPDF::setupDecryption(const QByteArray &baUserPassword, PDSTRUCT *pPdStruct
         } else if (nLen > 0) {
             security.nKeyBytes = nLen;      // crypt-filter /Length already in bytes (5/16)
         } else {
-            security.nKeyBytes = (security.nR == 2) ? 5 : 16;
+            security.nKeyBytes = 5;         // ISO 32000: default /Length is 40 bits (5 bytes) for every revision
         }
 
-        security.baID = findTrailerID(pPdStruct);
+        // /V may be absent (some writers omit it for R5/R6); infer it so decryptObject picks the AES-256 path.
+        if ((security.nR >= 5) && (security.nV < 5)) {
+            security.nV = 5;
+        }
+        // Classify AES-256 AFTER the /V inference so a /V-omitted R6 file is still recognised.
+        security.bAES256 = (security.nV >= 5) || (security.nR >= 5) || (sCFM == QLatin1String("/AESV3"));
 
-        bool bPasswordOk = false;
-        m_baFileKey = XPDFCrypt::computeFileKey(security, baUserPassword, &bPasswordOk);
+        security.baID = findTrailerID(pPdStruct);
         m_security = security;
-        m_bDecryptReady = bPasswordOk && !m_baFileKey.isEmpty();
-        break;
+
+        // Build the candidate list. An EXPLICIT password is tried on its own (user then owner) -- we must not
+        // mask a wrong explicit password by auto-cracking. The DEFAULT (empty) triage call additionally sweeps a
+        // short list of common weak passwords so trivially-protected files still open unattended.
+        QList<QByteArray> listPasswords;
+        listPasswords.append(baPassword);
+        if (baPassword.isEmpty()) {
+            static const char *g_szCommon[] = {"123456", "1234", "12345", "123456789", "password", "0000",
+                                               "1111", "111111", "admin", "user", "owner", "abc123", "letmein"};
+            for (qint32 nC = 0; nC < static_cast<qint32>(sizeof(g_szCommon) / sizeof(g_szCommon[0])); ++nC) {
+                const QByteArray baCandidate(g_szCommon[nC]);
+                if (!listPasswords.contains(baCandidate)) {
+                    listPasswords.append(baCandidate);
+                }
+            }
+        }
+
+        const qint32 nPwCount = listPasswords.count();
+        for (qint32 nPw = 0; (nPw < nPwCount) && XBinary::isPdStructNotCanceled(pPdStruct); ++nPw) {
+            bool bPasswordOk = false;
+            bool bIsOwner = false;
+            QByteArray baKey = XPDFCrypt::tryPassword(security, listPasswords.at(nPw), &bPasswordOk, &bIsOwner);
+            if (bPasswordOk && !baKey.isEmpty()) {
+                m_baFileKey = baKey;
+                m_bDecryptOwner = bIsOwner;
+                m_baDecryptPassword = listPasswords.at(nPw);
+                m_bDecryptReady = true;
+                break;
+            }
+        }
     }
 
     return m_bDecryptReady;
 }
 
+QString XPDF::getPermissions(PDSTRUCT *pPdStruct)
+{
+    if (!isEncrypted()) {
+        return QString();
+    }
+    setupDecryption(QByteArray(), pPdStruct);
+    if (m_security.nR == 0) {
+        return QString();  // security block not parsed (not the Standard handler)
+    }
+    return XPDFCrypt::permissionsToString(m_security.nP);
+}
+
 bool XPDF::isDecryptable() const
 {
     return m_bDecryptReady;
+}
+
+bool XPDF::isEncryptedButLocked() const
+{
+    // m_security.nR is set by setupDecryption once the /Encrypt dict is parsed; m_bDecryptReady means a password
+    // (empty/common/owner) unlocked it. Encrypted-but-not-ready => callers must not treat ciphertext as plaintext.
+    return (m_security.nR != 0) && (!m_bDecryptReady);
 }
 
 QByteArray XPDF::decryptContent(const QByteArray &baData, quint64 nObjNum, quint32 nGeneration)
@@ -2823,21 +3233,40 @@ QString XPDF::getDecryptedMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *p
     for (qint32 i = 0; (i < nCount) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
         const XPART &part = pListObjects->at(i);
 
+        // Only touch objects that actually carry Info keys; then read their raw bytes once for EXACT ciphertext.
+        bool bHasInfo = false;
+        for (qint32 k = 0; k < nKeys; ++k) {
+            if (part.listParts.contains(QString::fromLatin1(sKeys[k]))) {
+                bHasInfo = true;
+                break;
+            }
+        }
+        if (!bHasInfo) {
+            continue;
+        }
+
+        const QByteArray baObj = read_array(part.nOffset, qMin<qint64>(65536, getSize() - part.nOffset));
+
         for (qint32 k = 0; k < nKeys; ++k) {
             const QString sKey = QString::fromLatin1(sKeys[k]);
             if (stSeenKeys.contains(sKey)) {
                 continue;
             }
 
-            const QByteArray baRaw = _getRawBytesByKey(&(part.listParts), sKey);
+            const QByteArray baRaw = rawStringValueInBuffer(baObj, sKeys[k]);
             if (baRaw.isEmpty()) {
                 continue;
             }
 
-            const QByteArray baPlain = decryptContent(baRaw, part.nID, 0);
-            const QString sValue = decodePdfTextBytes(baPlain);
+            // Info-dictionary values are STRINGS (follow /StrF); use the object's real generation for the key.
+            const QByteArray baPlain = m_security.bStringsEncrypted ? decryptContent(baRaw, part.nID, part.nGen) : baRaw;
+            QString sValue = decodePdfTextBytes(baPlain);
+            // Trim trailing control/whitespace left by block-cipher padding or trailing NULs.
+            while (!sValue.isEmpty() && (sValue.at(sValue.size() - 1) <= QChar(' '))) {
+                sValue.chop(1);
+            }
             if (!sValue.trimmed().isEmpty()) {
-                listLines << (sKey.mid(1) + ": " + sValue);
+                listLines << (sKey.mid(1) + ": " + sValue.trimmed());
                 stSeenKeys.insert(sKey);
             }
         }
@@ -2905,6 +3334,9 @@ QString XPDF::getSuspiciousInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
         if (!part.listParts.contains(QLatin1String("/ObjStm"))) {
             continue;
         }
+        if (isEncryptedButLocked()) {
+            continue;  // cannot decrypt: do not scan ciphertext
+        }
 
         XPART full = handleXpart(part.nOffset, part.nID, -1, pPdStruct, true, &m_mapObjIdOffset);
         if (full.listStreams.isEmpty()) {
@@ -2920,11 +3352,14 @@ QString XPDF::getSuspiciousInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
         }
 
         QByteArray baRaw = read_array(stream.nOffset, stream.nSize);
+        if (m_bDecryptReady && m_security.bStreamsEncrypted) {
+            baRaw = decryptContent(baRaw, part.nID, full.nGen);  // decrypt the ObjStm (id+gen) before scanning
+        }
         QByteArray baDecoded;
         if (hm == HANDLE_METHOD_STORE) {
             baDecoded = baRaw;
         } else {
-            decompressPdfBuffer(baRaw, hm, -1, &baDecoded, pPdStruct);
+            decompressPdfBuffer(baRaw, hm, 100 * 1024 * 1024, &baDecoded, pPdStruct);  // bound inflate (bomb guard)
         }
 
         for (qint32 t = 0; t < nTriggers; ++t) {
@@ -3047,6 +3482,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                     XBinary::FPART record =
                         makeFilePart(XBinary::FILEPART_STREAM, stream.nOffset, stream.nSize, QString("%1 obj (%2)").arg(tr("Stream")).arg(QString::number(object.nID)));
+                    // Carry the object number AND generation so unpackCurrent derives the correct per-object key.
+                    // Use xpart.nGen -- parsed from the actual "N G obj" header, so it is right regardless of whether
+                    // the object was discovered via a classic xref table or a cross-reference stream.
+                    record.mapProperties.insert(FPART_PROP_UID, static_cast<qint64>(object.nID));
+                    record.mapProperties.insert(FPART_PROP_GEN, static_cast<qint64>(xpart.nGen));
 
                     // Resolve /Filter as an ordered list (single name or array). The terminal filter drives
                     // the decode; a multi-filter cascade cannot be undone by a single method, so it stays stored.
@@ -3061,6 +3501,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                     }
                     if (!sSubtype.isEmpty()) {
                         record.mapProperties.insert(FPART_PROP_SUBTYPE, sSubtype);
+                    }
+                    // Mark the XMP /Metadata stream: it is stored in the clear when /EncryptMetadata is false, so
+                    // unpackCurrent must not decrypt it. (/Type wins over the /Subtype /XML it also carries.)
+                    if (getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Type"), pPdStruct).var.toString() == QLatin1String("/Metadata")) {
+                        record.mapProperties.insert(FPART_PROP_SUBTYPE, QLatin1String("/Metadata"));
                     }
 
                     const HANDLE_METHOD decompressMethod = bCascade ? HANDLE_METHOD_STORE : pdfFilterToHandleMethod(sFilter);
@@ -3396,6 +3841,9 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
     pState->mapUnpackProperties = mapProperties;
     pState->pContext = nullptr;
 
+    // Enable decryption (empty user password) so encrypted streams extract as plaintext.
+    setupDecryption(QByteArray(), pPdStruct);
+
     QList<XBinary::FPART> listStreams = getFileParts(FILEPART_STREAM, -1, pPdStruct);
 
     if (XBinary::isPdStructNotCanceled(pPdStruct)) {
@@ -3471,12 +3919,50 @@ bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPd
     bool bResult = false;
 
     if (pState && pDevice && pState->pContext) {
+        // Encrypted document we could not unlock: writing the raw (still-encrypted) stream would emit ciphertext
+        // as if it were the extracted file. Refuse instead of producing garbage.
+        if (isEncryptedButLocked()) {
+            return false;
+        }
+
         ARCHIVERECORD archiveRecord = infoCurrent(pState, pPdStruct);
+
+        const QString sFilterName = archiveRecord.mapProperties.value(FPART_PROP_FILTERNAME).toString();
+        const QStringList listFilters = sFilterName.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+
+        // Is THIS stream actually encrypted? Streams follow /StmF (skip when /Identity); and the XMP /Metadata
+        // stream is plaintext when /EncryptMetadata is false. Only then do we decrypt before decompressing.
+        const bool bIsMetadataStream = (archiveRecord.mapProperties.value(FPART_PROP_SUBTYPE).toString() == QLatin1String("/Metadata"));
+        const bool bStreamEncrypted = m_bDecryptReady && m_security.bStreamsEncrypted && !(bIsMetadataStream && !m_security.bEncryptMetadata);
+
+        // Encrypted stream: decrypt the raw bytes with the object's key, then decompress the filters we can
+        // (image codecs like DCTDecode/CCITT are left as-is -- the decrypted bytes ARE the extracted image).
+        if (bStreamEncrypted && (archiveRecord.nStreamSize > 0)) {
+            const quint64 nObjNum = static_cast<quint64>(archiveRecord.mapProperties.value(FPART_PROP_UID).toLongLong());
+            const quint32 nGen = static_cast<quint32>(archiveRecord.mapProperties.value(FPART_PROP_GEN).toLongLong());
+            QByteArray baDecrypted = decryptContent(read_array(archiveRecord.nStreamOffset, archiveRecord.nStreamSize), nObjNum, nGen);
+
+            QByteArray baOut = baDecrypted;
+            bool bAllDecodable = !listFilters.isEmpty();
+            for (qint32 i = 0; i < listFilters.count(); ++i) {
+                if (pdfFilterToHandleMethod(listFilters.at(i)) == HANDLE_METHOD_STORE) {
+                    bAllDecodable = false;
+                    break;
+                }
+            }
+            if (bAllDecodable) {
+                QByteArray baChain;
+                if (decompressPdfChain(baDecrypted, listFilters, &baChain, pPdStruct, -1)) {
+                    baOut = baChain;
+                }
+            }
+
+            const qint64 nWritten = pDevice->write(baOut);
+            return (nWritten == static_cast<qint64>(baOut.size()));
+        }
 
         // Multi-filter cascade (e.g. [/ASCII85Decode /FlateDecode]): the single-method decompressor can't
         // undo a chain, so when every stage is decodable, apply the chain in-memory and write the result.
-        const QString sFilterName = archiveRecord.mapProperties.value(FPART_PROP_FILTERNAME).toString();
-        const QStringList listFilters = sFilterName.split(QLatin1Char(' '), Qt::SkipEmptyParts);
         if (listFilters.count() > 1) {
             bool bAllDecodable = true;
             for (qint32 i = 0; i < listFilters.count(); ++i) {
@@ -3489,7 +3975,7 @@ bool XPDF::unpackCurrent(UNPACK_STATE *pState, QIODevice *pDevice, PDSTRUCT *pPd
             if (bAllDecodable && (archiveRecord.nStreamSize > 0)) {
                 QByteArray baRaw = read_array(archiveRecord.nStreamOffset, archiveRecord.nStreamSize);
                 QByteArray baDecoded;
-                if (decompressPdfChain(baRaw, listFilters, &baDecoded, pPdStruct)) {
+                if (decompressPdfChain(baRaw, listFilters, &baDecoded, pPdStruct, -1)) {
                     const qint64 nWritten = pDevice->write(baDecoded);
                     return (nWritten == static_cast<qint64>(baDecoded.size()));
                 }

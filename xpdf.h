@@ -51,6 +51,7 @@ public:
 
     struct OBJECT {
         quint64 nID;
+        quint32 nGen;  // object generation from the "N G obj" header (needed for the per-object decryption key)
         qint64 nOffset;
         qint64 nSize;
     };
@@ -62,6 +63,7 @@ public:
 
     struct XPART {
         quint64 nID;
+        quint32 nGen;  // object generation from the "N G obj" header (needed for the per-object decryption key)
         qint64 nOffset;
         qint64 nSize;
         QList<QString> listParts;
@@ -117,6 +119,8 @@ public:
     static QString _getHex(const QString &sString);
     static QDateTime _getDateTime(const QString &sString);
     static qint32 getObjectID(const QString &sString);
+    // Generation number (the second integer) of an "N G obj" header; 0 if absent.
+    static qint32 getObjectGen(const QString &sString);
 
     QList<XPART> getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct = nullptr);
     static QList<XVARIANT> getValuesByKey(QList<XPART> *pListObjects, const QString &sKey, PDSTRUCT *pPdStruct = nullptr);
@@ -147,10 +151,17 @@ public:
 
     // Decryption (Standard security handler). Derives the file key for the given user password (empty by
     // default -- covers owner-only-protected PDFs) and lets encrypted strings/streams be recovered.
-    bool setupDecryption(const QByteArray &baUserPassword = QByteArray(), PDSTRUCT *pPdStruct = nullptr);
+    // baPassword is tried first (as user, then owner); if it fails, a short list of common weak passwords is
+    // tried automatically so trivially-protected files still open. Once unlocked, later calls are a no-op.
+    bool setupDecryption(const QByteArray &baPassword = QByteArray(), PDSTRUCT *pPdStruct = nullptr);
     bool isDecryptable() const;
+    // True when the document IS encrypted (Standard handler parsed) but no password unlocked it -- callers use
+    // this to avoid feeding ciphertext into decompression/JS-analysis/extraction as if it were plaintext.
+    bool isEncryptedButLocked() const;
     QByteArray decryptContent(const QByteArray &baData, quint64 nObjNum, quint32 nGeneration = 0);
     QString getDecryptedMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
+    // Human-readable /P permissions (e.g. "print, copy") for an encrypted PDF; empty if not encrypted.
+    QString getPermissions(PDSTRUCT *pPdStruct = nullptr);
     // Extract embedded JavaScript (/JS inline strings, hex, or indirect streams) and emulate it via XJSEmul
     // (only when built with USE_PDFJSEMUL; otherwise returns empty). Reveals deobfuscated payloads + exploit APIs.
     QString getJavaScriptInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
@@ -183,6 +194,11 @@ private:
     // Raw string-value bytes for a key ("(...)"/"<hex>" -> QByteArray); trailer /ID[0] bytes.
     static QByteArray _getRawBytesByKey(const QList<QString> *pListParts, const QString &sKey);
     QByteArray findTrailerID(PDSTRUCT *pPdStruct);
+    // Object id of the trailer's /Encrypt indirect reference (newest trailer wins). -1 if none.
+    qint64 findTrailerEncryptId(PDSTRUCT *pPdStruct);
+    // Index in pListObjects of the authoritative Standard /Encrypt dictionary: the object the trailer /Encrypt
+    // points at (newest revision), else the first "/Filter /Standard" match. -1 if none.
+    qint32 findEncryptObjectIndex(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct);
     // Resolve an object's file offset by id: index first, then a bounded scan. -1 if not found.
     qint64 resolveObjectOffset(quint64 nID, const QMap<quint64, qint64> *pMapObjOffsets, qint64 nHint, PDSTRUCT *pPdStruct);
     // Boundary-checked "N 0 obj" header search in a byte range (rejects prefix matches like 12 inside 112). -1 if absent.
@@ -199,6 +215,8 @@ private:
 
     bool m_bDecryptChecked;
     bool m_bDecryptReady;
+    bool m_bDecryptOwner;         // the winning password validated as OWNER (not user)
+    QByteArray m_baDecryptPassword;  // the password that unlocked the file (empty = empty user password)
     XPDFCrypt::SECURITY m_security;
     QByteArray m_baFileKey;
 };
