@@ -22,6 +22,7 @@
 #include "xaesdecoder.h"
 
 #include <QCryptographicHash>
+#include <QStringList>
 #include <cstring>
 
 namespace {
@@ -43,6 +44,18 @@ QByteArray XPDFCrypt::padPassword(const QByteArray &baPassword)
         baResult.append(reinterpret_cast<const char *>(g_pad), nNeed);
     }
     return baResult;
+}
+
+QByteArray XPDFCrypt::deriveRC4Key(const QByteArray &baPassword, qint32 nKeyBytes, qint32 nR)
+{
+    const qint32 nBytes = qBound(5, nKeyBytes, 16);
+    QByteArray baKey = md5(padPassword(baPassword));
+    if (nR >= 3) {
+        for (qint32 i = 0; i < 50; ++i) {
+            baKey = md5(baKey.left(nBytes));
+        }
+    }
+    return baKey.left(nBytes);
 }
 
 QByteArray XPDFCrypt::rc4(const QByteArray &baKey, const QByteArray &baData)
@@ -185,14 +198,24 @@ QByteArray XPDFCrypt::computeFileKey(const SECURITY &security, const QByteArray 
     }
 
     if (security.nR >= 5) {
-        // AES-256 (R5/R6). Validate: hash(password, U validation salt) == U[0:32]; then file key from UE.
+        // AES-256. Validate: hash(password, U validation salt) == U[0:32]; then file key from UE.
+        // R5 (deprecated Adobe extension) uses SHA-256 once; R6 (ISO 32000-2) uses the iterated Algorithm 2.B.
         if ((security.baU.size() < 48) || (security.baUE.size() < 32)) {
             return QByteArray();
         }
         const QByteArray baValidationSalt = security.baU.mid(32, 8);
         const QByteArray baKeySalt = security.baU.mid(40, 8);
 
-        const QByteArray baCheck = hashR6(baPassword, baValidationSalt, QByteArray());
+        QByteArray baCheck;
+        QByteArray baIntermediate;
+        if (security.nR == 5) {
+            baCheck = QCryptographicHash::hash(baPassword + baValidationSalt, QCryptographicHash::Sha256);
+            baIntermediate = QCryptographicHash::hash(baPassword + baKeySalt, QCryptographicHash::Sha256);
+        } else {
+            baCheck = hashR6(baPassword, baValidationSalt, QByteArray());
+            baIntermediate = hashR6(baPassword, baKeySalt, QByteArray());
+        }
+
         const bool bOk = (baCheck.left(32) == security.baU.left(32));
         if (pbPasswordOk) {
             *pbPasswordOk = bOk;
@@ -201,7 +224,6 @@ QByteArray XPDFCrypt::computeFileKey(const SECURITY &security, const QByteArray 
             return QByteArray();  // wrong password: cannot recover the file key
         }
 
-        const QByteArray baIntermediate = hashR6(baPassword, baKeySalt, QByteArray());
         // File key = AES-256-CBC-decrypt(UE) with intermediate key, zero IV, no padding.
         const QByteArray baZeroIV(16, '\0');
         return aesCbcDecrypt(baIntermediate, baZeroIV, security.baUE.left(32), false);
@@ -245,6 +267,106 @@ QByteArray XPDFCrypt::computeFileKey(const SECURITY &security, const QByteArray 
     }
 
     return baKey;
+}
+
+QByteArray XPDFCrypt::computeOwnerFileKey(const SECURITY &security, const QByteArray &baOwnerPassword, bool *pbPasswordOk)
+{
+    if (pbPasswordOk) {
+        *pbPasswordOk = false;
+    }
+
+    if (security.nR >= 5) {
+        // AES-256 owner path: validate hash(ownerPw, O validation salt, U) == O[0:32]; file key from OE.
+        // The R5/R6 owner hash appends the full 48-byte /U as the "user data" (ISO 32000-2 Algorithm 2.A/12).
+        if ((security.baO.size() < 48) || (security.baOE.size() < 32) || (security.baU.size() < 48)) {
+            return QByteArray();
+        }
+        const QByteArray baValidationSalt = security.baO.mid(32, 8);
+        const QByteArray baKeySalt = security.baO.mid(40, 8);
+        const QByteArray baUserData = security.baU.left(48);
+
+        QByteArray baCheck;
+        QByteArray baIntermediate;
+        if (security.nR == 5) {
+            baCheck = QCryptographicHash::hash(baOwnerPassword + baValidationSalt + baUserData, QCryptographicHash::Sha256);
+            baIntermediate = QCryptographicHash::hash(baOwnerPassword + baKeySalt + baUserData, QCryptographicHash::Sha256);
+        } else {
+            baCheck = hashR6(baOwnerPassword, baValidationSalt, baUserData);
+            baIntermediate = hashR6(baOwnerPassword, baKeySalt, baUserData);
+        }
+
+        const bool bOk = (baCheck.left(32) == security.baO.left(32));
+        if (pbPasswordOk) {
+            *pbPasswordOk = bOk;
+        }
+        if (!bOk) {
+            return QByteArray();
+        }
+
+        const QByteArray baZeroIV(16, '\0');
+        return aesCbcDecrypt(baIntermediate, baZeroIV, security.baOE.left(32), false);
+    }
+
+    // R2-R4 owner path (Algorithm 7): decrypt /O with the owner key to recover the padded user password,
+    // then run Algorithm 2 with it (which also validates against /U).
+    if (security.baO.size() < 32) {
+        return QByteArray();
+    }
+
+    const QByteArray baOwnerKey = deriveRC4Key(baOwnerPassword, security.nKeyBytes, security.nR);
+    QByteArray baUserPwPadded = security.baO.left(32);
+    if (security.nR == 2) {
+        baUserPwPadded = rc4(baOwnerKey, baUserPwPadded);
+    } else {
+        // 20 rounds in reverse: key = ownerKey XOR i for i=19..0.
+        for (qint32 i = 19; i >= 0; --i) {
+            QByteArray baStepKey(baOwnerKey.size(), Qt::Uninitialized);
+            for (qint32 b = 0; b < baOwnerKey.size(); ++b) {
+                baStepKey[b] = static_cast<char>(static_cast<quint8>(baOwnerKey.at(b)) ^ static_cast<quint8>(i));
+            }
+            baUserPwPadded = rc4(baStepKey, baUserPwPadded);
+        }
+    }
+
+    // baUserPwPadded is the 32-byte padded user password; computeFileKey pads it again (no-op) + validates /U.
+    return computeFileKey(security, baUserPwPadded, pbPasswordOk);
+}
+
+QByteArray XPDFCrypt::tryPassword(const SECURITY &security, const QByteArray &baPassword, bool *pbOk, bool *pbIsOwner)
+{
+    bool bOk = false;
+    QByteArray baKey = computeFileKey(security, baPassword, &bOk);
+    if (bOk) {
+        if (pbOk) *pbOk = true;
+        if (pbIsOwner) *pbIsOwner = false;
+        return baKey;
+    }
+
+    baKey = computeOwnerFileKey(security, baPassword, &bOk);
+    if (bOk) {
+        if (pbOk) *pbOk = true;
+        if (pbIsOwner) *pbIsOwner = true;
+        return baKey;
+    }
+
+    if (pbOk) *pbOk = false;
+    if (pbIsOwner) *pbIsOwner = false;
+    return QByteArray();
+}
+
+QString XPDFCrypt::permissionsToString(qint64 nP)
+{
+    const quint32 nBits = static_cast<quint32>(static_cast<qint32>(nP));
+    QStringList listAllowed;
+    if (nBits & 0x0004) listAllowed.append("print");
+    if (nBits & 0x0008) listAllowed.append("modify");
+    if (nBits & 0x0010) listAllowed.append("copy");
+    if (nBits & 0x0020) listAllowed.append("annotate");
+    if (nBits & 0x0100) listAllowed.append("fill-forms");
+    if (nBits & 0x0200) listAllowed.append("extract-a11y");
+    if (nBits & 0x0400) listAllowed.append("assemble");
+    if (nBits & 0x0800) listAllowed.append("print-hires");
+    return listAllowed.isEmpty() ? QString("none") : listAllowed.join(", ");
 }
 
 bool XPDFCrypt::validateUserPassword(const SECURITY &security, const QByteArray &baKey)
