@@ -127,7 +127,7 @@ XBinary::FPART makeFilePart(XBinary::FILEPART filePart, qint64 nFileOffset, qint
     record.filePart = filePart;
     record.nFileOffset = nFileOffset;
     record.nFileSize = nFileSize;
-    record.nVirtualAddress = -1;
+    record.nVirtualAddress = XADDR_MAX;
     record.sName = sName;
 
     return record;
@@ -142,6 +142,13 @@ bool decompressPdfBuffer(const QByteArray &baData, XBinary::HANDLE_METHOD handle
     if (!pbaResult || (handleMethod == XBinary::HANDLE_METHOD_STORE) || baData.isEmpty()) {
         return false;
     }
+
+    XBinary::PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const XBinary::PDSTRUCTLIFETIME progressLifetime = XBinary::retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return false;
 
     QBuffer sourceBuffer;
     sourceBuffer.setData(baData);
@@ -167,11 +174,16 @@ bool decompressPdfBuffer(const QByteArray &baData, XBinary::HANDLE_METHOD handle
 
     XDecompress xDecompress;
     bool bResult = xDecompress.decompress(&state, pPdStruct);
+    const bool bProgressOwnerAlive = XBinary::isPdStructLifetimeAlive(progressLifetime);
     *pbaResult = destBuffer.data();
 
     sourceBuffer.close();
     destBuffer.close();
 
+    if (!bProgressOwnerAlive) {
+        pbaResult->clear();
+        return false;
+    }
     return bResult;
 }
 
@@ -183,6 +195,18 @@ bool decompressPdfBuffer(const QByteArray &baData, XBinary::HANDLE_METHOD handle
 bool decompressPdfChain(const QByteArray &baData, const QStringList &listFilters, QByteArray *pbaResult, XBinary::PDSTRUCT *pPdStruct,
                         qint64 nMaxOutput = 100 * 1024 * 1024)
 {
+    if (!pbaResult) return false;
+
+    XBinary::PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const XBinary::PDSTRUCTLIFETIME progressLifetime = XBinary::retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) {
+        pbaResult->clear();
+        return false;
+    }
+
     QByteArray baCurrent = baData;
     bool bAny = false;
 
@@ -194,9 +218,17 @@ bool decompressPdfChain(const QByteArray &baData, const QStringList &listFilters
 
         QByteArray baNext;
         if (decompressPdfBuffer(baCurrent, handleMethod, nMaxOutput, &baNext, pPdStruct)) {
+            if (!XBinary::isPdStructLifetimeAlive(progressLifetime)) {
+                pbaResult->clear();
+                return false;
+            }
             baCurrent = baNext;
             bAny = true;
         } else {
+            if (!XBinary::isPdStructLifetimeAlive(progressLifetime)) {
+                pbaResult->clear();
+                return false;
+            }
             break;
         }
     }
@@ -714,6 +746,14 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
 {
     QList<XPDF::OBJECT> listResult;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    bool bProgressOwnerAlive = progressLifetime.isValid();
+    if (!pStartxref || !bProgressOwnerAlive) return listResult;
+
     qint64 nTotalSize = getSize();
 
     qint64 nCurrentOffset = pStartxref->nXrefOffset;
@@ -725,7 +765,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
 
         QMap<qint64, quint64> mapObjects;
 
-        while (XBinary::isPdStructNotCanceled(pPdStruct)) {
+        while (bProgressOwnerAlive && XBinary::isPdStructNotCanceled(pPdStruct)) {
             OS_STRING osSection = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
             if (!osSection.sString.isEmpty()) {
@@ -738,7 +778,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
                     qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
                     XBinary::setPdStructInit(pPdStruct, _nFreeIndex, static_cast<qint32>(nNumberOfObjects));
 
-                    for (quint64 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+                    for (quint64 i = 0; bProgressOwnerAlive && (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
                         OS_STRING osObject = _readPDFString(nCurrentOffset, 20, pPdStruct);
 
                         // No forward progress means we hit EOF: a hostile subsection count (e.g. "0 99999999999")
@@ -756,10 +796,13 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromStartxref(const STARTHREF *pStartxref, P
                         }
 
                         nCurrentOffset += osObject.nSize;
-                        XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
+                        bProgressOwnerAlive = XBinary::setPdStructCurrentIncrementChecked(pPdStruct, _nFreeIndex, progressLifetime);
+                        if (!bProgressOwnerAlive) return {};
                     }
 
-                    XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+                    if (bProgressOwnerAlive) {
+                        XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+                    }
                 } else {
                     break;
                 }
@@ -806,9 +849,29 @@ void XPDF::scanStructure(PDSTRUCT *pPdStruct)
         return;
     }
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return;
+    const auto failScan = [&]() {
+        m_listStartHrefs.clear();
+        m_listObjectsCache.clear();
+        m_mapObjIdOffset.clear();
+    };
+
     getHeaderOffset(pPdStruct);  // ensure the header offset is resolved and cached
+    if (!isPdStructLifetimeAlive(progressLifetime)) {
+        failScan();
+        return;
+    }
 
     m_listStartHrefs = findStartxrefs(0, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) {
+        failScan();
+        return;
+    }
     m_listObjectsCache.clear();
     m_mapObjIdOffset.clear();
 
@@ -825,10 +888,18 @@ void XPDF::scanStructure(PDSTRUCT *pPdStruct)
             } else if (startxref.bIsObject) {
                 bool bXrefStream = false;
                 listPart = getObjectsFromXrefStream(startxref.nXrefOffset, &bXrefStream, pPdStruct);
+                if (!isPdStructLifetimeAlive(progressLifetime)) {
+                    failScan();
+                    return;
+                }
                 if (!bXrefStream) {
                     // Not a decodable cross-reference stream after all: fall back to the brute-force object scan.
                     listPart = findObjects(0, startxref.nFooterOffset, true, pPdStruct);
                 }
+            }
+            if (!isPdStructLifetimeAlive(progressLifetime)) {
+                failScan();
+                return;
             }
 
             const qint32 nCount = listPart.count();
@@ -845,6 +916,10 @@ void XPDF::scanStructure(PDSTRUCT *pPdStruct)
         }
     } else {
         m_listObjectsCache = findObjects(0, -1, false, pPdStruct);
+        if (!isPdStructLifetimeAlive(progressLifetime)) {
+            failScan();
+            return;
+        }
         const qint32 nCount = m_listObjectsCache.count();
         for (qint32 j = 0; j < nCount; ++j) {
             m_mapObjIdOffset.insert(m_listObjectsCache.at(j).nID, m_listObjectsCache.at(j).nOffset);
@@ -862,12 +937,21 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
         *pbIsXrefStream = false;
     }
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    bool bProgressOwnerAlive = progressLifetime.isValid();
+    if (!bProgressOwnerAlive) return listResult;
+
     const qint64 nFileSize = getSize();
     QSet<qint64> stVisited;
     QSet<quint64> stSeenIds;
     qint64 nCurrentXref = nXrefOffset;
 
-    while ((nCurrentXref >= 0) && (nCurrentXref < nFileSize) && (!stVisited.contains(nCurrentXref)) && XBinary::isPdStructNotCanceled(pPdStruct)) {
+    while (bProgressOwnerAlive && (nCurrentXref >= 0) && (nCurrentXref < nFileSize) && (!stVisited.contains(nCurrentXref)) &&
+           XBinary::isPdStructNotCanceled(pPdStruct)) {
         stVisited.insert(nCurrentXref);
 
         OS_STRING osHead = _readPDFString(nCurrentXref, 40, pPdStruct);
@@ -876,6 +960,8 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
         }
 
         XPART xpart = handleXpart(nCurrentXref, 0, -1, pPdStruct, true, &m_mapObjIdOffset);
+        bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+        if (!bProgressOwnerAlive) return {};
 
         const QString sType = getFirstStringValueByKey(&(xpart.listParts), QLatin1String("/Type"), pPdStruct).var.toString();
         if ((sType != QLatin1String("/XRef")) || xpart.listStreams.isEmpty()) {
@@ -961,6 +1047,8 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
                 baData = baRaw;
             } else {
                 decompressPdfBuffer(baRaw, hm, -1, &baData, pPdStruct);
+                bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                if (!bProgressOwnerAlive) return {};
             }
         }
 
@@ -973,7 +1061,7 @@ QList<XPDF::OBJECT> XPDF::getObjectsFromXrefStream(qint64 nXrefOffset, bool *pbI
         qint64 nRow = 0;
         const qint32 nPairs = listIndex.count() / 2;
 
-        for (qint32 s = 0; (s < nPairs) && XBinary::isPdStructNotCanceled(pPdStruct); ++s) {
+        for (qint32 s = 0; bProgressOwnerAlive && (s < nPairs) && XBinary::isPdStructNotCanceled(pPdStruct); ++s) {
             const qint64 nStartId = listIndex.at(s * 2);
             const qint64 nCountEntries = listIndex.at(s * 2 + 1);
 
@@ -2452,7 +2540,17 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
 {
     QList<XPART> listResult;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    bool bProgressOwnerAlive = progressLifetime.isValid();
+    if (!bProgressOwnerAlive) return listResult;
+
     scanStructure(pPdStruct);
+    bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+    if (!bProgressOwnerAlive) return {};
 
     const qint32 nNumberOfObjects = m_listObjectsCache.count();
 
@@ -2460,19 +2558,24 @@ QList<XPDF::XPART> XPDF::getParts(qint32 nPartLimit, PDSTRUCT *pPdStruct)
         const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
         XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
 
-        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+        for (qint32 i = 0; bProgressOwnerAlive && (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             const OBJECT &record = m_listObjectsCache.at(i);
 
             // Dict-only: getParts consumers read listParts via getValuesByKey; stream bodies are not needed,
             // so skip the expensive per-stream /Length resolution entirely.
             XPART xpart = handleXpart(record.nOffset, record.nID, nPartLimit, pPdStruct, false, &m_mapObjIdOffset);
+            bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+            if (!bProgressOwnerAlive) return {};
 
             listResult.append(xpart);
 
-            XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
+            bProgressOwnerAlive = XBinary::setPdStructCurrentIncrementChecked(pPdStruct, _nFreeIndex, progressLifetime);
+            if (!bProgressOwnerAlive) return {};
         }
 
-        XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+        if (bProgressOwnerAlive) {
+            XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+        }
     }
 
     return listResult;
@@ -2483,12 +2586,20 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const 
     QList<XVARIANT> listResult;
     QSet<QString> stVars;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    bool bProgressOwnerAlive = progressLifetime.isValid();
+    if (!pListObjects || !bProgressOwnerAlive) return listResult;
+
     qint32 nNumberOfRecords = pListObjects->count();
 
     const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
     XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfRecords);
 
-    for (qint32 i = 0; (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+    for (qint32 i = 0; bProgressOwnerAlive && (i < nNumberOfRecords) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
         const XPART &record = pListObjects->at(i);
 
         qint32 nNumberOfParts = record.listParts.count();
@@ -2509,10 +2620,13 @@ QList<XBinary::XVARIANT> XPDF::getValuesByKey(QList<XPART> *pListObjects, const 
             }
         }
 
-        XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
+        bProgressOwnerAlive = XBinary::setPdStructCurrentIncrementChecked(pPdStruct, _nFreeIndex, progressLifetime);
+        if (!bProgressOwnerAlive) return {};
     }
 
-    XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+    if (bProgressOwnerAlive) {
+        XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+    }
 
     return listResult;
 }
@@ -2568,7 +2682,15 @@ QString XPDF::getHeaderCommentAsHex(PDSTRUCT *pPdStruct)
 
 QString XPDF::getFilters(PDSTRUCT *pPdStruct)
 {
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return {};
+
     QList<XPART> listParts = getParts(100, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
 
     // Resolve each object's /Filter (single name or array) into clean, de-duplicated filter names.
     QSet<QString> stFilters;
@@ -2591,8 +2713,16 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
 {
     QStringList listLines;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return {};
+
     // Parse the document once (dictionary tokens only; stream bodies are resolved lazily where needed).
     QList<XPART> listObjects = getParts(256, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
 
     // Filters actually used across the document.
     {
@@ -2614,8 +2744,10 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
     // Encryption first: when the document is encrypted, the Info-dictionary strings are ciphertext, so
     // showing them as "metadata" is misleading noise -- suppress them and say so instead.
     const QString sEncryption = getEncryptionInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
     // Populate m_security (V/R/P and the derived key) before reading permissions/metadata below.
     const bool bDecrypted = !sEncryption.isEmpty() && setupDecryption(QByteArray(), pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
     if (!sEncryption.isEmpty()) {
         listLines << (tr("Encrypted") + ": " + sEncryption);
         if (m_security.nR != 0) {
@@ -2625,6 +2757,7 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
 
     if (sEncryption.isEmpty()) {
         const QString sMeta = getMetaInfoString(&listObjects, pPdStruct);
+        if (!isPdStructLifetimeAlive(progressLifetime)) return {};
         if (!sMeta.isEmpty()) {
             listLines << sMeta;
         }
@@ -2640,6 +2773,7 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
         }
         listLines << (tr("Decrypted") + " (" + sHow + ")");
         const QString sDecMeta = getDecryptedMetaInfoString(&listObjects, pPdStruct);
+        if (!isPdStructLifetimeAlive(progressLifetime)) return {};
         if (!sDecMeta.isEmpty()) {
             listLines << sDecMeta;
         }
@@ -2648,16 +2782,19 @@ QString XPDF::getInfo(PDSTRUCT *pPdStruct)
     }
 
     const QString sLinearized = getLinearizedInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
     if (!sLinearized.isEmpty()) {
         listLines << sLinearized;
     }
 
     const QString sSuspicious = getSuspiciousInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
     if (!sSuspicious.isEmpty()) {
         listLines << sSuspicious;
     }
 
     const QString sJavaScript = getJavaScriptInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
     if (!sJavaScript.isEmpty()) {
         listLines << sJavaScript;
     }
@@ -2816,9 +2953,17 @@ QString XPDF::getMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct)
 
     QStringList listLines;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return {};
+
     for (qint32 k = 0; (k < nKeys) && XBinary::isPdStructNotCanceled(pPdStruct); ++k) {
         const QString sKey = QString::fromLatin1(sKeys[k]);
         const QList<XVARIANT> listValues = getValuesByKey(pListObjects, sKey, pPdStruct);
+        if (!isPdStructLifetimeAlive(progressLifetime)) return {};
 
         for (qint32 v = 0; v < listValues.count(); ++v) {
             const QString sValue = listValues.at(v).var.toString();
@@ -2898,8 +3043,18 @@ QString XPDF::getEncryptionInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdS
 
 QString XPDF::getEncryption(PDSTRUCT *pPdStruct)
 {
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return {};
+
     QList<XPART> listObjects = getParts(256, pPdStruct);
-    return getEncryptionInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
+    const QString result = getEncryptionInfoString(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return {};
+    return result;
 }
 
 bool XPDF::isEncrypted()
@@ -3074,14 +3229,30 @@ bool XPDF::setupDecryption(const QByteArray &baPassword, PDSTRUCT *pPdStruct)
     if (m_bDecryptChecked && baPassword.isEmpty()) {
         return false;
     }
+
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return false;
+
     m_bDecryptChecked = true;
     m_bDecryptReady = false;
 
     QList<XPART> listObjects = getParts(256, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) {
+        m_bDecryptChecked = false;
+        return false;
+    }
 
     // Select the authoritative Standard /Encrypt dictionary via the trailer /Encrypt reference (newest revision),
     // not merely the first "/Filter /Standard" object -- an incremental update or a decoy can leave a stale one.
     const qint32 nEncIdx = findEncryptObjectIndex(&listObjects, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) {
+        m_bDecryptChecked = false;
+        return false;
+    }
     if (nEncIdx >= 0) {
         QList<QString> &listParts = listObjects[nEncIdx].listParts;
 
@@ -3135,6 +3306,10 @@ bool XPDF::setupDecryption(const QByteArray &baPassword, PDSTRUCT *pPdStruct)
         security.bAES256 = (security.nV >= 5) || (security.nR >= 5) || (sCFM == QLatin1String("/AESV3"));
 
         security.baID = findTrailerID(pPdStruct);
+        if (!isPdStructLifetimeAlive(progressLifetime)) {
+            m_bDecryptChecked = false;
+            return false;
+        }
         m_security = security;
 
         // Build the candidate list. An EXPLICIT password is tried on its own (user then owner) -- we must not
@@ -3392,9 +3567,19 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 {
     QList<XBinary::FPART> listResult;
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    bool bProgressOwnerAlive = progressLifetime.isValid();
+    if (!bProgressOwnerAlive) return listResult;
+
     const qint64 totalSize = getSize();
 
     scanStructure(pPdStruct);
+    bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+    if (!bProgressOwnerAlive) return {};
 
     const qint64 nHeaderOffset = qMax<qint64>(0, m_nHeaderOffset);
     const qint32 nNumberOfFrefs = m_listStartHrefs.count();
@@ -3408,7 +3593,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
     }
 
     if (nNumberOfFrefs) {
-        for (qint32 j = 0; (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+        for (qint32 j = 0; bProgressOwnerAlive && (j < nNumberOfFrefs) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
             const STARTHREF &startxref = m_listStartHrefs.at(j);
 
             if (startxref.bIsXref && (nFileParts & FILEPART_TABLE)) {
@@ -3426,7 +3611,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         nMaxOffset = nHeaderOffset + osHeader.nSize;
     }
 
-    for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+    for (qint32 i = 0; bProgressOwnerAlive && (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
         const OBJECT &o = m_listObjectsCache.at(i);
         const qint64 nEnd = o.nOffset + o.nSize;
         if (nEnd > nMaxOffset) {
@@ -3449,7 +3634,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
         const qint32 _nFreeIndex = XBinary::getFreeIndex(pPdStruct);
         XBinary::setPdStructInit(pPdStruct, _nFreeIndex, nNumberOfObjects);
 
-        for (qint32 i = 0; (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
+        for (qint32 i = 0; bProgressOwnerAlive && (i < nNumberOfObjects) && XBinary::isPdStructNotCanceled(pPdStruct); ++i) {
             // Honour the part cap requested by _getMemoryMap (which passes 1000); the old code ignored nLimit.
             if ((nLimit != -1) && (listResult.count() >= nLimit)) {
                 break;
@@ -3463,6 +3648,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
             if (nFileParts & FILEPART_STREAM) {
                 XPART xpart = handleXpart(object.nOffset, object.nID, -1, pPdStruct, true, &m_mapObjIdOffset);
+                bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                if (!bProgressOwnerAlive) return {};
 
                 // Collect /Filespec -> embedded-file name so streams can carry their real filename.
                 {
@@ -3477,7 +3664,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
 
                 qint32 nNumberOfStreams = xpart.listStreams.count();
 
-                for (qint32 j = 0; (j < nNumberOfStreams) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
+                for (qint32 j = 0; bProgressOwnerAlive && (j < nNumberOfStreams) && XBinary::isPdStructNotCanceled(pPdStruct); ++j) {
                     const STREAM &stream = xpart.listStreams.at(j);
 
                     XBinary::FPART record =
@@ -3530,7 +3717,7 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                         {
                             const qint32 nParts = xpart.listParts.count();
 
-                            for (qint32 p = 0; (p + 1 < nParts) && XBinary::isPdStructNotCanceled(pPdStruct); ++p) {
+                            for (qint32 p = 0; bProgressOwnerAlive && (p + 1 < nParts) && XBinary::isPdStructNotCanceled(pPdStruct); ++p) {
                                 if (xpart.listParts.at(p) == QLatin1String("/ColorSpace")) {
                                     const QString &sNext = xpart.listParts.at(p + 1);
 
@@ -3549,8 +3736,12 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                                     } else if (_isIndirectRef(sNext)) {
                                         const quint64 nCsId = static_cast<quint64>(sNext.section(QChar(' '), 0, 0).toLongLong());
                                         const qint64 nCsOffset = resolveObjectOffset(nCsId, &m_mapObjIdOffset, object.nOffset, pPdStruct);
+                                        bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                        if (!bProgressOwnerAlive) return {};
                                         if (nCsOffset != -1) {
                                             XPART csPart = handleXpart(nCsOffset, static_cast<qint32>(nCsId), -1, pPdStruct, false, &m_mapObjIdOffset);
+                                            bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                            if (!bProgressOwnerAlive) return {};
                                             const qint32 nCsParts = csPart.listParts.count();
                                             const qint32 nOpen = csPart.listParts.indexOf(QLatin1String("["));
                                             if (nOpen != -1) {
@@ -3590,15 +3781,21 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                                                     const quint64 nPalId = static_cast<quint64>(sObjRef.section(QChar(' '), 0, 0).toLongLong());
                                                     // Resolve via the object index (O(log K)); the old code scanned the whole file per image.
                                                     qint64 nPaletteObjOffset = resolveObjectOffset(nPalId, &m_mapObjIdOffset, object.nOffset, pPdStruct);
+                                                    bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                                    if (!bProgressOwnerAlive) return {};
 
                                                     if (nPaletteObjOffset != -1) {
                                                         const qint32 nPalObjId = static_cast<qint32>(nPalId);
                                                         stPaletteObjectIds.insert(nPalObjId);
                                                         XPART palPart = handleXpart(nPaletteObjOffset, nPalObjId, -1, pPdStruct, true, &m_mapObjIdOffset);
+                                                        bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                                        if (!bProgressOwnerAlive) return {};
 
                                                         if (palPart.listStreams.count() > 0) {
                                                             const STREAM &palStream = palPart.listStreams.at(0);
                                                             QByteArray baRawPalette = read_array_process(palStream.nOffset, palStream.nSize, pPdStruct);
+                                                            bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                                            if (!bProgressOwnerAlive) return {};
 
                                                             QString sPalFilter;
                                                             qint32 nPalParts = palPart.listParts.count();
@@ -3615,8 +3812,11 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                                                                 if (palMethod != HANDLE_METHOD_STORE) {
                                                                     QByteArray baDecodedPalette;
 
-                                                                    if (decompressPdfBuffer(baRawPalette, palMethod, -1, &baDecodedPalette, pPdStruct) &&
-                                                                        !baDecodedPalette.isEmpty()) {
+                                                                    const bool bPaletteDecoded =
+                                                                        decompressPdfBuffer(baRawPalette, palMethod, -1, &baDecodedPalette, pPdStruct);
+                                                                    bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                                                    if (!bProgressOwnerAlive) return {};
+                                                                    if (bPaletteDecoded && !baDecodedPalette.isEmpty()) {
                                                                         baPalette = baDecodedPalette;
                                                                     }
                                                                 }
@@ -3719,6 +3919,8 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                                 QByteArray baRaw = read_array(stream.nOffset, nReadSize);
                                 QByteArray baHeader;
                                 decompressPdfBuffer(baRaw, decompressMethod, 40, &baHeader, pPdStruct);
+                                bProgressOwnerAlive = isPdStructLifetimeAlive(progressLifetime);
+                                if (!bProgressOwnerAlive) return {};
 
                                 if (baHeader.size() >= 40) {
                                     quint32 nSig = readUInt32BE(baHeader, 36);
@@ -3774,10 +3976,13 @@ QList<XBinary::FPART> XPDF::getFileParts(quint32 nFileParts, qint32 nLimit, PDST
                 }
             }
 
-            XBinary::setPdStructCurrentIncrement(pPdStruct, _nFreeIndex);
+            bProgressOwnerAlive = XBinary::setPdStructCurrentIncrementChecked(pPdStruct, _nFreeIndex, progressLifetime);
+            if (!bProgressOwnerAlive) return {};
         }
 
-        XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+        if (bProgressOwnerAlive) {
+            XBinary::setPdStructFinished(pPdStruct, _nFreeIndex);
+        }
 
         // Post-pass: relabel palette streams and attach embedded-file names, matching by object id.
         if (!stPaletteObjectIds.isEmpty() || !mapEmbeddedNames.isEmpty()) {
@@ -3835,6 +4040,13 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
         return false;
     }
 
+    PDSTRUCT pdStructEmpty = XBinary::createPdStruct();
+    if (!pPdStruct) {
+        pPdStruct = &pdStructEmpty;
+    }
+    const PDSTRUCTLIFETIME progressLifetime = retainPdStructLifetime(pPdStruct);
+    if (!progressLifetime.isValid()) return false;
+
     pState->nCurrentOffset = 0;
     pState->nTotalSize = getSize();
     pState->nCurrentIndex = 0;
@@ -3843,8 +4055,10 @@ bool XPDF::initUnpack(UNPACK_STATE *pState, const QMap<UNPACK_PROP, QVariant> &m
 
     // Enable decryption (empty user password) so encrypted streams extract as plaintext.
     setupDecryption(QByteArray(), pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return false;
 
     QList<XBinary::FPART> listStreams = getFileParts(FILEPART_STREAM, -1, pPdStruct);
+    if (!isPdStructLifetimeAlive(progressLifetime)) return false;
 
     if (XBinary::isPdStructNotCanceled(pPdStruct)) {
         UNPACK_CONTEXT *pContext = new UNPACK_CONTEXT;
