@@ -141,6 +141,11 @@ public:
     QString getFilters(PDSTRUCT *pPdStruct = nullptr);
     QString getInfo(PDSTRUCT *pPdStruct = nullptr) override;
 
+    bool isResourcesPresent() override;
+    bool isMetadataPresent() override;
+    QVector<XRESOURCE_STRUCT> getResourceStructs() override;
+    QVector<XMETADATA_STRUCT> getMetadataStructs() override;
+
     // Forensic/triage summaries (reuse the parsed object list; safe on hostile input).
     QString getMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);
     QString getSuspiciousInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct = nullptr);

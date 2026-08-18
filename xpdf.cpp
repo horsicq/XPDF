@@ -3450,6 +3450,145 @@ QString XPDF::getDecryptedMetaInfoString(QList<XPART> *pListObjects, PDSTRUCT *p
     return listLines.join(QLatin1String("; "));
 }
 
+bool XPDF::isResourcesPresent()
+{
+    return !getFileParts(FILEPART_STREAM, 1, nullptr).isEmpty();
+}
+
+bool XPDF::isMetadataPresent()
+{
+    return !getMetadataStructs().isEmpty();
+}
+
+QVector<XBinary::XRESOURCE_STRUCT> XPDF::getResourceStructs()
+{
+    QVector<XRESOURCE_STRUCT> listResult;
+    const QList<FPART> listStreams = getFileParts(FILEPART_STREAM, -1, nullptr);
+    const qint32 nNumberOfStreams = listStreams.count();
+
+    listResult.reserve(nNumberOfStreams);
+
+    for (qint32 i = 0; i < nNumberOfStreams; ++i) {
+        const FPART &stream = listStreams.at(i);
+
+        XRESOURCE_STRUCT record = {};
+        record.nOffset = stream.nFileOffset;
+        record.nSize = stream.nFileSize;
+        record.nAddress = offsetToAddress(stream.nFileOffset);
+        record.sName = stream.sName;
+        record.nType = stream.mapProperties.value(FPART_PROP_FILETYPE, static_cast<quint32>(stream.filePart)).toUInt();
+        record.nID = stream.mapProperties.value(FPART_PROP_UID, i).toUInt();
+
+        listResult.append(record);
+    }
+
+    return listResult;
+}
+
+QVector<XBinary::XMETADATA_STRUCT> XPDF::getMetadataStructs()
+{
+    static const char *const sKeys[] = {"/Title", "/Author", "/Subject", "/Keywords", "/Creator", "/Producer", "/CreationDate", "/ModDate"};
+    static const XMETADATA_ID ids[] = {XMETADATA_ID_TITLE, XMETADATA_ID_AUTHOR, XMETADATA_ID_SUBJECT, XMETADATA_ID_KEYWORDS, XMETADATA_ID_CREATOR, XMETADATA_ID_PRODUCER, XMETADATA_ID_DATETIME_CREATED, XMETADATA_ID_MODIFICATED};
+    const qint32 nNumberOfKeys = static_cast<qint32>(sizeof(sKeys) / sizeof(sKeys[0]));
+
+    QVector<XMETADATA_STRUCT> listResult;
+    PDSTRUCT pdStruct = XBinary::createPdStruct();
+    QList<XPART> listObjects = getParts(256, &pdStruct);
+
+    if (listObjects.isEmpty()) {
+        return listResult;
+    }
+
+    const bool bEncrypted = !getEncryptionInfoString(&listObjects, &pdStruct).isEmpty();
+    if (bEncrypted && !setupDecryption(QByteArray(), &pdStruct)) {
+        return listResult;
+    }
+
+    QSet<QString> stSeenKeys;
+    const qint32 nNumberOfObjects = listObjects.count();
+
+    for (qint32 i = 0; i < nNumberOfObjects; ++i) {
+        XPART &part = listObjects[i];
+        QByteArray baObject;
+
+        if (bEncrypted) {
+            baObject = read_array(part.nOffset, qMin<qint64>(65536, getSize() - part.nOffset));
+        }
+
+        for (qint32 k = 0; k < nNumberOfKeys; ++k) {
+            const QString sKey = QString::fromLatin1(sKeys[k]);
+            if (stSeenKeys.contains(sKey) || !part.listParts.contains(sKey)) {
+                continue;
+            }
+
+            QVariant varValue;
+
+            if (bEncrypted) {
+                const QByteArray baRaw = rawStringValueInBuffer(baObject, sKeys[k]);
+                if (baRaw.isEmpty()) {
+                    continue;
+                }
+
+                const QByteArray baPlain = m_security.bStringsEncrypted ? decryptContent(baRaw, part.nID, part.nGen) : baRaw;
+                QString sValue = decodePdfTextBytes(baPlain);
+                while (!sValue.isEmpty() && (sValue.at(sValue.size() - 1) <= QChar(' '))) {
+                    sValue.chop(1);
+                }
+                varValue = _parseValue(sValue.trimmed()).var;
+            } else {
+                varValue = getFirstStringValueByKey(&part.listParts, sKey, &pdStruct).var;
+            }
+
+            if (varValue.toString().isEmpty()) {
+                continue;
+            }
+
+            XMETADATA_STRUCT record = {};
+            record.nOffset = part.nOffset;
+            record.nSize = part.nSize;
+            record.nAddress = offsetToAddress(part.nOffset);
+            record.id = ids[k];
+            record.sName = sKey.mid(1);
+            record.varValue = varValue;
+
+            listResult.append(record);
+            stSeenKeys.insert(sKey);
+        }
+    }
+
+    const QList<FPART> listStreams = getFileParts(FILEPART_STREAM, -1, &pdStruct);
+    for (qint32 i = 0; i < listStreams.count(); ++i) {
+        const FPART &stream = listStreams.at(i);
+
+        auto appendProperty = [this, &listResult, &stream](FPART_PROP property, XMETADATA_ID id, const QString &sName) {
+            if (!stream.mapProperties.contains(property)) {
+                return;
+            }
+
+            const QVariant varValue = stream.mapProperties.value(property);
+            if (varValue.toString().isEmpty()) {
+                return;
+            }
+
+            XMETADATA_STRUCT record = {};
+            record.nOffset = stream.nFileOffset;
+            record.nSize = stream.nFileSize;
+            record.nAddress = offsetToAddress(stream.nFileOffset);
+            record.id = id;
+            record.sName = QString("%1: %2").arg(stream.sName, sName);
+            record.varValue = varValue;
+            listResult.append(record);
+        };
+
+        appendProperty(FPART_PROP_WIDTH, XMETADATA_ID_FRAME_WIDTH, QString("Width"));
+        appendProperty(FPART_PROP_HEIGHT, XMETADATA_ID_FRAME_HEIGHT, QString("Height"));
+        appendProperty(FPART_PROP_BITSPERCOMPONENT, XMETADATA_ID_BIT_DEPTH, QString("Bits per component"));
+        appendProperty(FPART_PROP_COLORSPACE, XMETADATA_ID_COLOR_SPACE, QString("Color space"));
+    }
+
+    return listResult;
+}
+
 QString XPDF::getLinearizedInfoString(QList<XPART> *pListObjects, PDSTRUCT *pPdStruct)
 {
     QString sResult;
